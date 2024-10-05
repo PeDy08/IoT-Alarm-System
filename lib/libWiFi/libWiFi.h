@@ -15,7 +15,7 @@
 
 #include "mainAppDefinitions.h"
 #include "libJson.h"
-#include "libHash.h"
+#include "libAuth.h"
 #include "utils.h"
 
 #define WIFI_AP_SSID "IoT Alarm Setup"

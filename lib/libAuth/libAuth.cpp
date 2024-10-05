@@ -1,4 +1,6 @@
-#include "libHash.h"
+#include "libAuth.h"
+
+MFRC522 mfrc522(RFID_CS_PIN);
 
 String hashPassword(const String &password) {
     esplogI(" (libHash): Hashing password...\n");

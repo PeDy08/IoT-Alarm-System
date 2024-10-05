@@ -195,8 +195,7 @@ void rtosRfid(void* parameters) {
 
     // card detected
     String rfid_card = "";
-    for (byte i = 0; i < mfrc522.uid.size; i++) 
-    {
+    for (byte i = 0; i < mfrc522.uid.size; i++) {
       rfid_card.concat(String(mfrc522.uid.uidByte[i] < 0x10 ? " 0" : " "));
       rfid_card.concat(String(mfrc522.uid.uidByte[i], HEX));
     }

@@ -11,8 +11,7 @@
 #include "libKeypad.h"
 #include "libJson.h"
 #include "libWiFi.h"
-#include "libHash.h"
-#include "libRfid.h"
+#include "libAuth.h"
 
 void keypadEvent(char key);
 void setup();

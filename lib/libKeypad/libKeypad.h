@@ -12,7 +12,7 @@
 #include <I2CKeyPad8x8.h>
 
 #include "mainAppDefinitions.h"
-#include "libHash.h"
+#include "libAuth.h"
 #include "utils.h"
 
 extern const uint8_t KEYPAD_I2C_ADDRESS;
