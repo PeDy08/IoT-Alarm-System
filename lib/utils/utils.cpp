@@ -26,13 +26,13 @@ void cycleSelection(int * selection, int selection_max) {
 }
 
 void rebootESP() {
-    esplogW("Rebooting!\n");
+    esplogW("Rebooting...\n");
     delay(2000);
     ESP.restart();
 }
 
 bool checkLogFileSize() {
-    File logFile = LittleFS.open(LOG_FILE, FILE_READ);
+    File logFile = SD.open(LOG_FILE, FILE_READ);
     if (!logFile) {
         esplogW("[fs]: Failed to open log file for size check!\n");
         return false;
@@ -43,7 +43,7 @@ bool checkLogFileSize() {
     
     if (fileSize >= LOG_FILE_MAX_SIZE) {
         esplogI("[fs]: Log file max size was reached! Cleaning logs!\n");
-        LittleFS.rename(LOG_FILE, LOG_FILE_OLD);
+        SD.rename(LOG_FILE, LOG_FILE_OLD);
         esplogI("[fs]: New log file was created!\n");
     }
 
@@ -63,7 +63,7 @@ bool esplogI(const char* format, ...) {
     Serial.printf("[%lu]%s", timestamp, buf);
     Serial.print("\033[1;39m");
 
-    File logFile = LittleFS.open(LOG_FILE, FILE_APPEND);
+    File logFile = SD.open(LOG_FILE, FILE_APPEND);
     if (!logFile) {
         Serial.print("\033[1;31m");
         Serial.printf(" -> failed to log info to file\n");
@@ -89,7 +89,7 @@ bool esplogW(const char* format, ...) {
     Serial.printf("[%lu]%s", timestamp, buf);
     Serial.print("\033[1;39m");
 
-    File logFile = LittleFS.open(LOG_FILE, FILE_APPEND);
+    File logFile = SD.open(LOG_FILE, FILE_APPEND);
     if (!logFile) {
         Serial.print("\033[1;31m");
         Serial.printf(" -> failed to log info to file\n");
@@ -115,7 +115,7 @@ bool esplogE(const char* format, ...) {
     Serial.printf("[%lu]%s", timestamp, buf);
     Serial.print("\033[1;39m");
 
-    File logFile = LittleFS.open(LOG_FILE, FILE_APPEND);
+    File logFile = SD.open(LOG_FILE, FILE_APPEND);
     if (!logFile) {
         Serial.print("\033[1;31m");
         Serial.printf(" -> failed to log info to file\n");

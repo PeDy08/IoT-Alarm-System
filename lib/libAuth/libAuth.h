@@ -9,21 +9,29 @@
 #define LIBAUTH_H_DEFINITION
 
 #include <Arduino.h>
-#include <LittleFS.h>
+#include <SD.h>
 #include <mbedtls/sha256.h>
 #include <MFRC522.h>
 
 #include "utils.h"
 
 #define LOCK_FILE_NAME "passwords.txt"
-#define LOCK_FILE_PATH "/"
+#define LOCK_FILE_PATH "/auth/"
 #define LOCK_FILE String(String(LOCK_FILE_PATH)+String(LOCK_FILE_NAME)).c_str()
+
+#define RFID_FILE_NAME "rfids.txt"
+#define RFID_FILE_PATH "/auth/"
+#define RFID_FILE String(String(RFID_FILE_PATH)+String(RFID_FILE_NAME)).c_str()
+
+#define RFID_TMP_FILE_NAME "rfids_tmp.txt"
+#define RFID_TMP_FILE_PATH "/auth/"
+#define RFID_TMP_FILE String(String(RFID_TMP_FILE_PATH)+String(RFID_TMP_FILE_NAME)).c_str()
 
 #define MIN_PASSWORD_LENGTH 4
 #define MAX_PASSWORD_LENGTH 8
 
 #define RFID_CS_PIN 5
-// #define RFID_RST_PIN 000
+#define RFID_RST_PIN 17
 
 extern MFRC522 mfrc522;
 
@@ -36,7 +44,7 @@ extern MFRC522 mfrc522;
  * @param password The plaintext password to hash.
  * @return The hashed password in hexadecimal format.
  */
-String hashPassword(const String &password);
+String hashPassword(String &password);
 
 /**
  * @brief Saves the hashed password to a file on LittleFS.
@@ -48,7 +56,7 @@ String hashPassword(const String &password);
  * @param inputPassword The hashed password to save.
  * @return True if the password was successfully saved, false otherwise.
  */
-bool savePassword(const String &inputPassword);
+bool savePassword(String &inputPassword);
 
 /**
  * @brief Saves the hashed password to a file on LittleFS.
@@ -62,7 +70,7 @@ bool savePassword(const String &inputPassword);
  * @param inputDoublePassword The hashed password to save.
  * @return True if the password was successfully saved, false otherwise.
  */
-bool saveNewPassword(const String &inputDoublePassword);
+bool saveNewPassword(String &inputDoublePassword);
 
 /**
  * @brief Checks if the entered password matches the stored hashed password.
@@ -74,7 +82,7 @@ bool saveNewPassword(const String &inputDoublePassword);
  * @param inputPassword The plaintext password entered by the user.
  * @return True if the password is correct, false otherwise.
  */
-bool checkPassword(const String &inputPassword);
+bool checkPassword(String &inputPassword);
 
 /**
  * @brief Checks if the password was set or not.
@@ -103,7 +111,7 @@ int lengthPassword();
  * @param inputRfid The plaintext rfid uid detected by the rfid reader.
  * @return True if the uids match, false otherwise.
  */
-bool checkRfid();
+bool checkRfid(String &inputRfid);
 
 /**
  * @brief Saves the detected rfid card uid to a file on LittleFS.
@@ -115,7 +123,7 @@ bool checkRfid();
  * @param inputRfid The detected rfid card uid to save.
  * @return True if the uid was successfully saved, false otherwise.
  */
-bool saveRfid(const String &inputRfid);
+bool saveRfid(String &inputRfid);
 
 /**
  * @brief Add new record of detected rfid card uid to a file on LittleFS.
@@ -127,7 +135,7 @@ bool saveRfid(const String &inputRfid);
  * @param inputRfid The detected rfid card uid to save.
  * @return True if the uid was successfully added, false otherwise.
  */
-bool addRfid(const String &inputRfid);
+bool addRfid(String &inputRfid);
 
 /**
  * @brief Delete a record of detected rfid card uid to a file on LittleFS.
@@ -139,7 +147,7 @@ bool addRfid(const String &inputRfid);
  * @param inputRfid The detected rfid card uid to delete.
  * @return True if the uid was successfully deleted, false otherwise.
  */
-bool delRfid(const String &inputRfid);
+bool delRfid(String &inputRfid);
 
 /**
  * @brief Checks if any rfid was set or not.

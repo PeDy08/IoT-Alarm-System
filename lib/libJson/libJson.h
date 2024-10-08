@@ -8,7 +8,7 @@
 #ifndef LIBJSON_H_DEFINITION
 #define LIBJSON_H_DEFINITION
 
-#include <LittleFS.h>
+#include <SD.h>
 #include <ArduinoJson.h>
 
 #include "utils.h"
@@ -16,7 +16,7 @@
 
 #define CONFIG_FILE_NAME "config.json"
 #define CONFIG_FILE_UPLOAD_NAME "config.json"
-#define CONFIG_FILE_PATH "/"
+#define CONFIG_FILE_PATH "/config/"
 #define CONFIG_FILE String(String(CONFIG_FILE_PATH)+String(CONFIG_FILE_NAME)).c_str()
 #define CONFIG_UPLOAD_FILE String(String(CONFIG_FILE_PATH)+String(CONFIG_FILE_UPLOAD_NAME)).c_str()
 

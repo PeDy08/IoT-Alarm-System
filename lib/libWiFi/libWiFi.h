@@ -9,7 +9,7 @@
 #define LIBWIFI_H_DEFINITION
 
 #include <WiFi.h>
-#include <LittleFS.h>
+#include <SD.h>
 #include <ESPAsyncWebServer.h>
 #include <AsyncTCP.h>
 

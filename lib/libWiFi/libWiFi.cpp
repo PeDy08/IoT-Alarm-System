@@ -5,13 +5,18 @@ AsyncWebServer server(80);
 void startWifiSetupMode() {
     WiFi.mode(WIFI_AP);
     WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PSWD);
-    esplogI("[wifi]: WiFi AP started! Connect to ESP using WiFi:\n - SSID: %s\n - Password: %s\n - IP: %s", WIFI_AP_SSID, WIFI_AP_PSWD, WiFi.softAPIP().toString().c_str());
+    esplogI("[wifi]: WiFi AP started! Connect to ESP using WiFi:\n - SSID: %s\n - Password: %s\n - IP: %s\n", WIFI_AP_SSID, WIFI_AP_PSWD, WiFi.softAPIP().toString().c_str());
 
     // webserver configuration
-    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-        request->send(LittleFS, "/wifimanager.html", "text/html");
+    server.on("/wifimanager", HTTP_GET, [](AsyncWebServerRequest *request) {
+        request->send(SD, "/web/AP/wifimanager.html", "text/html");
     });
-    server.serveStatic("/", LittleFS, "/");
+
+    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+        request->send(SD, "/web/AP/index.html", "text/html");
+    });
+
+    server.serveStatic("/", SD, "/web/AP");
 
     server.on("/", HTTP_POST, [](AsyncWebServerRequest *request) {
         int params = request->params();
@@ -75,24 +80,32 @@ void startWiFiServerMode(g_vars_t * g_vars, g_config_t * g_config) {
     });
 
     server.on("/download/log", HTTP_GET, [](AsyncWebServerRequest *request){
-        if (LittleFS.exists(LOG_FILE)) {
-            request->send(LittleFS, LOG_FILE, "text/plain");
+        if (SD.exists(LOG_FILE)) {
+            request->send(SD, LOG_FILE, "text/plain");
         } else {
             request->send(200, "text/plain", "File not found!");
         }
     });
 
     server.on("/download/password", HTTP_GET, [](AsyncWebServerRequest *request){
-        if (LittleFS.exists(LOCK_FILE)) {
-            request->send(LittleFS, LOCK_FILE, "text/plain");
+        if (SD.exists(LOCK_FILE)) {
+            request->send(SD, LOCK_FILE, "text/plain");
+        } else {
+            request->send(200, "text/plain", "File not found!");
+        }
+    });
+
+    server.on("/download/rfid", HTTP_GET, [](AsyncWebServerRequest *request){
+        if (SD.exists(CONFIG_FILE)) {
+            request->send(SD, RFID_FILE, "text/plain");
         } else {
             request->send(200, "text/plain", "File not found!");
         }
     });
 
     server.on("/download/config", HTTP_GET, [](AsyncWebServerRequest *request){
-        if (LittleFS.exists(CONFIG_FILE)) {
-            request->send(LittleFS, CONFIG_FILE, "application/json");
+        if (SD.exists(CONFIG_FILE)) {
+            request->send(SD, CONFIG_FILE, "application/json");
         } else {
             request->send(200, "text/plain", "File not found!");
         }
@@ -102,7 +115,7 @@ void startWiFiServerMode(g_vars_t * g_vars, g_config_t * g_config) {
         request->send(200, "text/plain", "JSON file received successfully!");
     }, nullptr, [g_config](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total){
         esplogI("[server]: Received configuration data size: %d bytes\n", len);
-        File configFile = LittleFS.open(CONFIG_UPLOAD_FILE, "w");
+        File configFile = SD.open(CONFIG_UPLOAD_FILE, "w");
         if (!configFile) {
             esplogE("[server]: Failed to open config file to write new configuration!\n");
         }

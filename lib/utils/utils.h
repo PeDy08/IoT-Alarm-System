@@ -9,11 +9,11 @@
 #define UTILS_H_DEFINITION
 
 #include <Arduino.h>
-#include <LittleFS.h>
+#include <SD.h>
 
 #define LOG_FILE_NAME "logfile.txt"
 #define LOG_FILE_OLD_NAME "old_logfile.txt"
-#define LOG_FILE_PATH "/"
+#define LOG_FILE_PATH "/log/"
 #define LOG_FILE String(String(LOG_FILE_PATH)+String(LOG_FILE_NAME)).c_str()
 #define LOG_FILE_OLD String(String(LOG_FILE_PATH)+String(LOG_FILE_OLD_NAME)).c_str()
 #define LOG_FILE_MAX_SIZE 10 * 1024 // maximal size of log file 10 kB

@@ -27,101 +27,10 @@ extern I2CKeyPad8x8 keypad;
 bool isValidChar(char input);
 
 /**
- * @brief Callback function for keypad event.
+ * @brief Function for handeling asynd keypad events.
  * 
- * This function is called when any keypad button is pressed and STATE_INIT is active.
+ * Recognises the active state and decides what to do with keypad event.
  */
-void keyFxPressInit(char key, g_vars_t * g_vars);
-
-/**
- * @brief Callback function for keypad event.
- * 
- * This function is called when any keypad button is pressed and STATE_SETUP is active.
- */
-void keyFxPressSetup(char key, g_vars_t * g_vars);
-
-/**
- * @brief Callback function for keypad event.
- * 
- * This function is called when any keypad button is pressed and STATE_ALARM_IDLE is active.
- */
-void keyFxPressAlarmIdle(char key, g_vars_t * g_vars);
-
-/**
- * @brief Callback function for keypad event.
- * 
- * This function is called when any keypad button is pressed and STATE_TEST_IDLE is active.
- */
-void keyFxPressTestIdle(char key, g_vars_t * g_vars);
-
-/**
- * @brief Callback function for keypad event.
- * 
- * This function is called when any keypad button is pressed and STATE_ALARM_LOCK_ENTER_PIN is active.
- */
-void keyFxPressAlarmLockEnterPin(char key, g_vars_t * g_vars);
-
-/**
- * @brief Callback function for keypad event.
- * 
- * This function is called when any keypad button is pressed and STATE_TEST_LOCK_ENTER_PIN is active.
- */
-void keyFxPressTestLockEnterPin(char key, g_vars_t * g_vars);
-
-/**
- * @brief Callback function for keypad event.
- * 
- * This function is called when any keypad button is pressed and STATE_ALARM_UNLOCK_ENTER_PIN is active.
- */
-void keyFxPressAlarmUnlockEnterPin(char key, g_vars_t * g_vars);
-
-/**
- * @brief Callback function for keypad event.
- * 
- * This function is called when any keypad button is pressed and STATE_TEST_UNLOCK_ENTER_PIN is active.
- */
-void keyFxPressTestUnlockEnterPin(char key, g_vars_t * g_vars);
-
-/**
- * @brief Callback function for keypad event.
- * 
- * This function is called when any keypad button is pressed and STATE_ALARM_CHANGE_ENTER_PIN1 is active.
- */
-void keyFxPressAlarmChangeEnterPin1(char key, g_vars_t * g_vars);
-
-/**
- * @brief Callback function for keypad event.
- * 
- * This function is called when any keypad button is pressed and STATE_TEST_CHANGE_ENTER_PIN1 is active.
- */
-void keyFxPressTestChangeEnterPin1(char key, g_vars_t * g_vars);
-
-/**
- * @brief Callback function for keypad event.
- * 
- * This function is called when any keypad button is pressed and STATE_ALARM_CHANGE_ENTER_PIN2 is active.
- */
-void keyFxPressAlarmChangeEnterPin2(char key, g_vars_t * g_vars);
-
-/**
- * @brief Callback function for keypad event.
- * 
- * This function is called when any keypad button is pressed and STATE_TEST_CHANGE_ENTER_PIN2 is active.
- */
-void keyFxPressTestChangeEnterPin2(char key, g_vars_t * g_vars);
-
-/**
- * @brief Callback function for keypad event.
- * 
- * This function is called when any keypad button is pressed and STATE_ALARM_CHANGE_ENTER_PIN3 is active.
- */
-void keyFxPressAlarmChangeEnterPin3(char key, g_vars_t * g_vars);
-
-/**
- * @brief Callback function for keypad event.
- * 
- * This function is called when any keypad button is pressed and STATE_TEST_CHANGE_ENTER_PIN3 is active.
- */
-void keyFxPressTestChangeEnterPin3(char key, g_vars_t * g_vars);
+void keypadEvent(g_vars_t * g_vars, char key);
 
 #endif
