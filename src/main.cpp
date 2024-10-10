@@ -76,7 +76,11 @@ void setup() {
   lcd.print("");
   lcd.setCursor(0, 3);
   lcd.print("Petr Zerzan");
-  delay(2000);
+
+  // init GSM module
+  if (!initSerialGSM()) {
+    esplogE("[setup]: Failed to initialise GSM module!\n");
+  }
 
   // init keypad
   if (!keypad.begin()) {
@@ -92,6 +96,7 @@ void setup() {
   xTaskCreate(rtosMenu, "menu", 16384, NULL, 2, &handleTaskMenu);
   xTaskCreate(rtosKeypad, "keypad", 8192, NULL, 1, &handleTaskKeypad);
   xTaskCreate(rtosRfid, "rfid", 4096, NULL, 3, &handleTaskRfid);
+  xTaskCreate(rtosGsm, "gsm", 8192, NULL, 2, &handleTaskGsm);
   xTaskCreatePinnedToCore(rtosNet, "net", 8192, NULL, 1, &handleTaskNet, CONFIG_ARDUINO_RUNNING_CORE);
 
   // start and suspend refresher tasks
@@ -336,6 +341,12 @@ void rtosNet(void* parameters) {
     }
     vTaskDelay(1000 / portTICK_PERIOD_MS);
   }
+}
+
+// -------------------------------------------------------------------------------------------------------------
+/* GSM COMMUNICATION HANDELER */
+void rtosGsm(void* parameters) {
+  // TODO
 }
 
 // -------------------------------------------------------------------------------------------------------------

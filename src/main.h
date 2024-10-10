@@ -13,6 +13,7 @@
 #include "libWiFi.h"
 #include "libAuth.h"
 #include "libDisplay.h"
+#include "libGsm.h"
 
 #define SPI_MOSI 23
 #define SPI_MISO 19
@@ -25,6 +26,7 @@ extern g_vars_t g_vars;
 void setup();
 void loop();
 
+// WORKING TASKS
 TaskHandle_t handleTaskMenu = NULL;
 void rtosMenu(void* parameters);
 
@@ -37,14 +39,18 @@ void rtosNet(void* parameters);
 TaskHandle_t handleTaskSetup = NULL;
 void rtosSetup(void* parameters);
 
+TaskHandle_t handleTaskRfid = NULL;
+void rtosRfid(void* parameters);
+
+TaskHandle_t handleTaskGsm = NULL;
+void rtosGsm(void* parameters);
+
+// REFRESH TASKS
 TaskHandle_t handleTaskMenuRefresh = NULL;
 void rtosMenuRefresh(void* parameters);
 
 TaskHandle_t handleTaskRfidRefresh = NULL;
 void rtosRfidRefresh(void* parameters);
-
-TaskHandle_t handleTaskRfid = NULL;
-void rtosRfid(void* parameters);
 
 /**
  * @brief Sets various global variables depending on the provided arguments. This function modifies
