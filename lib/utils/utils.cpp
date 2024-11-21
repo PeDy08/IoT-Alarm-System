@@ -51,7 +51,7 @@ bool checkLogFileSize() {
 }
 
 bool esplogI(const char* format, ...) {
-    char buf[512];
+    char buf[1024];
     unsigned long timestamp = millis();
     va_list args;
 
@@ -77,7 +77,7 @@ bool esplogI(const char* format, ...) {
 }
 
 bool esplogW(const char* format, ...) {
-    char buf[256];
+    char buf[512];
     unsigned long timestamp = millis();
     va_list args;
 
@@ -103,7 +103,7 @@ bool esplogW(const char* format, ...) {
 }
 
 bool esplogE(const char* format, ...) {
-    char buf[256];
+    char buf[512];
     unsigned long timestamp = millis();
     va_list args;
 

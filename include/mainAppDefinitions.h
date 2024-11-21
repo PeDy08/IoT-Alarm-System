@@ -8,21 +8,24 @@
 #ifndef MAINAPPDEFINITIONS_H_DEFINITION
 #define MAINAPPDEFINITIONS_H_DEFINITION
 
+#include <Arduino.h>
+
 // main app states
 enum States {
   STATE_INIT,                           // initial state of the aplication
   STATE_SETUP,                          // setup menu state
+  STATE_SETUP_AP_ENTER_PIN,
   STATE_SETUP_AP,                       // AP wifi setup state
-  STATE_SETUP_HARD_RESET_ENTER_PIN,
-  STATE_SETUP_HARD_RESET,
-  STATE_SETUP_PIN1,
-  STATE_SETUP_PIN2,
-  STATE_SETUP_PIN3,
-  STATE_SETUP_RFID_ADD,
-  STATE_SETUP_RFID_ADD_ENTER_PIN,
-  STATE_SETUP_RFID_DEL,
-  STATE_SETUP_RFID_DEL_ENTER_PIN,
-  STATE_SETUP_RFID_CHECK,
+  STATE_SETUP_HARD_RESET_ENTER_PIN,     // hard reset pin check state
+  STATE_SETUP_HARD_RESET,               // hard reset
+  STATE_SETUP_PIN1,                     // pin setup check state
+  STATE_SETUP_PIN2,                     // pin setup pin state
+  STATE_SETUP_PIN3,                     // pin setup pin confirm state
+  STATE_SETUP_RFID_ADD,                 // rfid setup add
+  STATE_SETUP_RFID_ADD_ENTER_PIN,       // rfid setup add check state
+  STATE_SETUP_RFID_DEL,                 // rfid setup del
+  STATE_SETUP_RFID_DEL_ENTER_PIN,       // rfid setup del check state
+  STATE_SETUP_RFID_CHECK,               // rfid setup check
   STATE_ALARM_IDLE,                     // alarm menu state
   STATE_ALARM_LOCK_ENTER_PIN,           // alarm lock check state
   STATE_ALARM_UNLOCK_ENTER_PIN,         // alarm unlock check state
@@ -38,7 +41,7 @@ enum States {
   STATE_TEST_UNLOCK_ENTER_PIN,          // test unlock check state
   STATE_TEST_CHANGE_ENTER_PIN1,         // test change pin check state
   STATE_TEST_CHANGE_ENTER_PIN2,         // test change pin state
-  STATE_TEST_CHANGE_ENTER_PIN3,        // alarm change pin confirm state
+  STATE_TEST_CHANGE_ENTER_PIN3,         // alarm change pin confirm state
   STATE_TEST_OK,                        // test running - ok state
   STATE_TEST_C,                         // test starting
   STATE_TEST_W,                         // test running - warning state
@@ -52,6 +55,7 @@ inline const char* getStateText(States state, bool pretty = false) {
         case STATE_INIT: return pretty ? "Main menu:" : "STATE_INIT";
         case STATE_SETUP: return pretty ? "Setup:" : "STATE_SETUP";
         case STATE_SETUP_AP: return pretty ? "Starting WiFi AP..." : "STATE_SETUP_AP";
+        case STATE_SETUP_AP_ENTER_PIN: return pretty ? "Starting WiFi AP..." : "STATE_SETUP_AP_ENTER_PIN";
         case STATE_SETUP_HARD_RESET_ENTER_PIN: return pretty ? "Hard reset..." : "STATE_SETUP_HARD_RESET_ENTER_PIN";
         case STATE_SETUP_HARD_RESET: return pretty ? "Hard reset..." : "STATE_SETUP_HARD_RESET";
         case STATE_SETUP_PIN1: return pretty ? "Setting new pin..." : "STATE_SETUP_PIN1";
@@ -111,8 +115,8 @@ enum selectionSetup {
 enum selectionAlarmIdle {
     SELECTION_ALARM_IDLE_LOCK,
     SELECTION_ALARM_IDLE_CHANGE_PASSWORD,
-    SELECTION_ALARM_IDLE_RETURN,
     SELECTION_ALARM_IDLE_REBOOT,
+    SELECTION_ALARM_IDLE_RETURN,
     SELECTION_ALARM_IDLE_MAX,
 };
 
@@ -120,8 +124,8 @@ enum selectionAlarmIdle {
 enum selectionTestIdle {
     SELECTION_TEST_IDLE_LOCK,
     SELECTION_TEST_IDLE_CHANGE_PASSWORD,
-    SELECTION_TEST_IDLE_RETURN,
     SELECTION_TEST_IDLE_REBOOT,
+    SELECTION_TEST_IDLE_RETURN,
     SELECTION_TEST_IDLE_MAX,
 };
 
@@ -172,27 +176,35 @@ inline const char* getSelectionText(States state, int selection, bool pretty = f
 }
 
 struct g_vars_t {
-    States state;
-    States state_prev;
+    States state;                       // state
+    States state_prev;                  // previous state
 
-    int selection;
-    int selection_prev;
-    
-    int selection_max;
-    int selection_max_prev;
+    int selection;                      // menu selection
+    int selection_prev;                 // previous state menu selection
 
-    bool confirm;
-    bool abort;
-    bool refresh;
+    int selection_max;                  // menu items
+    int selection_max_prev;             // previous state menu items
 
-    int wifi_status;
-    int wifi_mode;
-    int gprs;
-    bool electricity;
+    bool confirm;                       // confirm flag (user input)
+    bool abort;                         // abort flag (user input)
+    bool refresh;                       // refresh flag (user input)
 
-    String pin;
-    int attempts;
-    unsigned long time;
+    int wifi_status;                    // wifi status (connected, disconnected...)
+    int wifi_mode;                      // wifi mode (STA, AP)
+
+    int wifi_strength;                  // strength of WiFi signal (RSSI)
+    int gsm_strength;                   // strength of gsm signal (RSSI)
+    int battery_level;                  // battery percentage
+    bool power_mode;                    // power mode flag (powerline or battery)
+
+    unsigned long datetime;             // actual seconds after time epoch
+    String date;                        // actual time (HH:MM)
+    String time;                        // actual date (DD:MM:YYYY)
+
+    String pin;                         // typed PIN code (user input)
+    int attempts;                       // failed attempts for PIN (user input)
+    int alarm_events;                   // recorded alarm events (zigbee sensors)
+    unsigned long time_temp;            // temporary time variable (for countdowns)
 };
 
 // every param needs to be added and handeled in:
@@ -200,12 +212,21 @@ struct g_vars_t {
 //  - libJson.cpp (loadConfig(), saveConfig(), setDefaultConfig())
 //  - libWiFi.cpp (startWifiSetupMode())
 struct g_config_t {
-    String wifi_ssid;
-    String wifi_pswd;
-    String wifi_ip;
-    String wifi_gtw;
-    String wifi_sbnt;
-    int alarm_countdown_s;
+    String wifi_ssid;                   // wifi ssid
+    String wifi_pswd;                   // wifi password
+    String wifi_ip;                     // wifi ip adress
+    String wifi_gtw;                    // wifi gateway address
+    String wifi_sbnt;                   // wifi subnet mask
+
+    // String mqtt_broker;
+    // String mqtt_topic;
+
+    int alarm_countdown_s;              // countdown before alarm is started after locking process
+    int alarm_e_countdown_s;            // TODO add new param to app - countdown before alarm start emergency notifications after 'alarm_e_threshold' is reached
+    int alarm_w_threshold;              // TODO add new param to app - number of alarm events before warning state is triggered
+    int alarm_e_threshold;              // TODO add new param to app - number of alarm events before emergency state is triggered
+
+    String alarm_telephones;            // TODO add new param to app - alarm notifiactions telephone numbers
 };
 
 #endif

@@ -18,6 +18,14 @@
 #include "libAuth.h"
 #include "utils.h"
 
+#ifdef EINK
+#include "libDisplayEINK.h"
+#endif
+
+#ifdef LCD
+#include "libDisplayLCD.h"
+#endif
+
 #define WIFI_AP_SSID "IoT Alarm Setup"
 #define WIFI_AP_PSWD ""
 

@@ -4,6 +4,8 @@
  */
 
 #include <Arduino.h>
+#include <WiFiUdp.h>
+#include <NTPClient.h>
 
 #include "mainAppDefinitions.h"
 
@@ -12,16 +14,29 @@
 #include "libJson.h"
 #include "libWiFi.h"
 #include "libAuth.h"
-#include "libDisplay.h"
 #include "libGsm.h"
+#include "libZigbee.h"
 
-#define SPI_MOSI 23
-#define SPI_MISO 19
-#define SPI_CLK 18
-#define SD_CS_PIN 16
+#ifdef EINK
+#include "libDisplayEINK.h"
+#endif
+
+#ifdef LCD
+#include "libDisplayLCD.h"
+#endif
+
+#define IIC_SDA 21
+#define IIC_CLK 22
+#define SPI_MOSI 16
+#define SPI_MISO 4
+#define SPI_CLK 17
+#define SD_CS_PIN 2
 
 extern g_config_t g_config;
 extern g_vars_t g_vars;
+
+extern WiFiUDP ntpUDP;
+extern NTPClient timeClient;
 
 void setup();
 void loop();
@@ -30,11 +45,17 @@ void loop();
 TaskHandle_t handleTaskMenu = NULL;
 void rtosMenu(void* parameters);
 
+TaskHandle_t handleTaskAlarm = NULL;
+void rtosAlarm(void* testmode);
+
 TaskHandle_t handleTaskKeypad = NULL;
 void rtosKeypad(void* parameters);
 
 TaskHandle_t handleTaskNet = NULL;
 void rtosNet(void* parameters);
+
+TaskHandle_t handleTaskDatetime = NULL;
+void rtosDatetime(void* parameters);
 
 TaskHandle_t handleTaskSetup = NULL;
 void rtosSetup(void* parameters);
@@ -44,6 +65,9 @@ void rtosRfid(void* parameters);
 
 TaskHandle_t handleTaskGsm = NULL;
 void rtosGsm(void* parameters);
+
+TaskHandle_t handleTaskZigbee = NULL;
+void rtosZigbee(void* parameters);
 
 // REFRESH TASKS
 TaskHandle_t handleTaskMenuRefresh = NULL;
@@ -93,11 +117,12 @@ inline void setState(States state = STATE_MAX, int selection = -1, int selection
   }
 
   if (pin != "NULL") {
-    Serial.println(pin);
     g_vars.pin = pin;
   }
 
   if (attempts != -1) {
     g_vars.attempts = attempts;
   }
+
+  loadScreen(&g_vars, &g_config);
 }

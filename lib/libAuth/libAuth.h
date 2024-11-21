@@ -30,8 +30,8 @@
 #define MIN_PASSWORD_LENGTH 4
 #define MAX_PASSWORD_LENGTH 8
 
-#define RFID_CS_PIN 5
-#define RFID_RST_PIN 17
+#define RFID_CS_PIN 32
+#define RFID_RST_PIN 33
 
 extern MFRC522 mfrc522;
 

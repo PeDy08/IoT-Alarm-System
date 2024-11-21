@@ -9,14 +9,15 @@
 #define LIBKEYPAD_H_DEFINITION
 
 #include <Wire.h>
-#include <I2CKeyPad8x8.h>
+#include <I2CKeyPad.h>
 
 #include "mainAppDefinitions.h"
 #include "libAuth.h"
+#include "libDisplayEINK.h"
 #include "utils.h"
 
 extern const uint8_t KEYPAD_I2C_ADDRESS;
-extern I2CKeyPad8x8 keypad;
+extern I2CKeyPad keypad;
 
 /**
  * @brief Function for determing if char is correctly mapped and valid.
@@ -31,6 +32,6 @@ bool isValidChar(char input);
  * 
  * Recognises the active state and decides what to do with keypad event.
  */
-void keypadEvent(g_vars_t * g_vars, char key);
+void keypadEvent(g_vars_t * g_vars, g_config_t * g_config, char key);
 
 #endif

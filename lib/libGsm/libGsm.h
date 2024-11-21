@@ -13,12 +13,12 @@
 
 #include "utils.h"
 
-#define GSM_RX_PIN 26
-#define GSM_TX_PIN 27
-#define GSM_RST_PIN 25
+#define GSM_RX_PIN 27
+#define GSM_TX_PIN 14
+// #define GSM_RST_PIN 13 // <- will be at pcf8574
 #define GSM_BAUDRATE 9600
 #define GSM_TIMEOUT 1000
-// #define GSM_PIN ""  // <- not implemented (command: AT+CPIN=****)
+// #define GSM_PIN ""  // <- SIMCARD PASSWORD not implemented (command: AT+CPIN=****)
 
 // volatile functions
 // #define GSM_SLEEP

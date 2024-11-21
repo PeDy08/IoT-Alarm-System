@@ -19,7 +19,9 @@
 #define LCD_ROWS 4
 #define LCD_ADDR 0x27
 
-extern LiquidCrystal_I2C lcd;
+extern LiquidCrystal_I2C display;
+
+void initLcd();
 
 void authScreenC(g_vars_t * g_vars);
 void authScreenE(g_vars_t * g_vars);

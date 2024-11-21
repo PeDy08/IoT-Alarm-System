@@ -7,7 +7,11 @@ void setDefaultConfig(g_config_t *g_config) {
     g_config->wifi_ip = "\0";
     g_config->wifi_gtw = "\0";
     g_config->wifi_sbnt = "\0";
+
     g_config->alarm_countdown_s = 120;
+    g_config->alarm_e_countdown_s = 120;
+    g_config->alarm_w_threshold = 5;
+    g_config->alarm_e_threshold = 7;
 }
 
 bool saveConfig(g_config_t *g_config) {
@@ -32,7 +36,11 @@ bool saveConfig(g_config_t *g_config) {
     doc["ip"] = g_config->wifi_ip;
     doc["gateway"] = g_config->wifi_gtw;
     doc["subnet"] = g_config->wifi_sbnt;
+
     doc["alarm_countdown"] = g_config->alarm_countdown_s;
+    doc["alarm_countdown_e"] = g_config->alarm_e_countdown_s;
+    doc["alarm_threshold_w"] = g_config->alarm_w_threshold;
+    doc["alarm_threshold_e"] = g_config->alarm_e_threshold;
 
     if (serializeJson(doc, configFile) == 0) {
         esplogE(" (libJson): Failed serialise data to file!\n");
@@ -123,7 +131,10 @@ bool loadConfig(g_config_t * g_config, const char* filepath) {
         !doc["ip"].is<String>() ||
         !doc["gateway"].is<String>() ||
         !doc["subnet"].is<String>() ||
-        !doc["alarm_countdown"].is<int>()) {
+        !doc["alarm_countdown"].is<int>() ||
+        !doc["alarm_countdown_e"].is<int>() ||
+        !doc["alarm_threshold_w"].is<int>() ||
+        !doc["alarm_threshold_e"].is<int>()) {
             
         esplogW(" (libJson): Uploaded config file is missing some required fields! Reseting the configuration!\n");
         configFile.close();
@@ -142,8 +153,11 @@ bool loadConfig(g_config_t * g_config, const char* filepath) {
     g_config->wifi_ip = doc["ip"].as<String>();
     g_config->wifi_gtw = doc["gateway"].as<String>();
     g_config->wifi_sbnt = doc["subnet"].as<String>();
+
     g_config->alarm_countdown_s = doc["alarm_countdown"].as<int>();
-    
+    g_config->alarm_e_countdown_s = doc["alarm_countdown_e"].as<int>();
+    g_config->alarm_w_threshold = doc["alarm_threshold_w"].as<int>();
+    g_config->alarm_e_threshold = doc["alarm_threshold_e"].as<int>();
 
     doc.clear();
     configFile.close();

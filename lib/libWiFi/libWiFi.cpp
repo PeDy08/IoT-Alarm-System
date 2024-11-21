@@ -29,7 +29,11 @@ void startWifiSetupMode() {
                 if (p->name() == "ip") {c.wifi_ip = p->value().c_str();}
                 if (p->name() == "gtw") {c.wifi_gtw = p->value().c_str();}
                 if (p->name() == "sbnt") {c.wifi_sbnt = p->value().c_str();}
+
                 if (p->name() == "countdown") {c.alarm_countdown_s = p->value().toInt();}
+                if (p->name() == "countdown_e") {c.alarm_e_countdown_s = p->value().toInt();}
+                if (p->name() == "threshold_w") {c.alarm_w_threshold = p->value().toInt();}
+                if (p->name() == "threshold_e") {c.alarm_e_threshold = p->value().toInt();}
             }
         }
         
@@ -41,6 +45,7 @@ void startWifiSetupMode() {
             request->send(200, "text/plain", "Configuration saved successfully!\nESP will now restart.");
         }
 
+        loadScreen(NULL, NULL, true);
         delay(3000);
         ESP.restart();
     });
