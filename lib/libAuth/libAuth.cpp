@@ -27,12 +27,14 @@ bool checkPassword(String &inputPassword) {
     inputPassword.trim();
     if (!SD.exists(LOCK_FILE)) {
         esplogW(TAG_LIB_AUTH, "(checkPassword)", "Password file doesn't exist!");
+        displayNotification(NOTIFICATION_AUTH_CHECK_ERROR);
         return false;
     }
 
     File passwordFile = SD.open(LOCK_FILE, "r");
     if (!passwordFile) {
         esplogE(TAG_LIB_AUTH, "(checkPassword)", "Failed to open password file: '%s'! Unexpected error!", LOCK_FILE);
+        displayNotification(NOTIFICATION_AUTH_CHECK_ERROR);
         return false;
     }
 
@@ -47,6 +49,7 @@ bool checkPassword(String &inputPassword) {
     if (actualPassword.length() != storedPasswordLength) {
         esplogI(TAG_LIB_AUTH, "(checkPassword)", "Incorrect password! Password length mismatch!");
         passwordFile.close();
+        displayNotification(NOTIFICATION_AUTH_CHECK_ERROR);
         return false;
     }
 
@@ -62,9 +65,11 @@ bool checkPassword(String &inputPassword) {
     
     if (hashedPassword == storedHashedPassword) {
         esplogI(TAG_LIB_AUTH, "(checkPassword)", "Password is correct.");
+        displayNotification(NOTIFICATION_AUTH_CHECK_SUCCESS);
         return true;
     } else {
         esplogI(TAG_LIB_AUTH, "(checkPassword)", "Incorrect password!");
+        displayNotification(NOTIFICATION_AUTH_CHECK_ERROR);
         return false;
     }
 }
@@ -76,6 +81,7 @@ bool savePassword(String &inputPassword) {
         esplogW(TAG_LIB_AUTH, "(savePassword)", "Password file found, rewriting!");
         if (!SD.remove(LOCK_FILE)) {
             esplogE(TAG_LIB_AUTH, "(savePassword)", "Failed to rewrite existing file: %s!", LOCK_FILE);
+            displayNotification(NOTIFICATION_AUTH_SET_ERROR);
             return false;
         }
     }
@@ -83,6 +89,7 @@ bool savePassword(String &inputPassword) {
     File passwordFile = SD.open(LOCK_FILE, "w");
     if (!passwordFile) {
         esplogE(TAG_LIB_AUTH, "(savePassword)", "Failed to open password file: %s when writing! Unexpected error!", LOCK_FILE);
+        displayNotification(NOTIFICATION_AUTH_SET_ERROR);
         return false;
     }
 
@@ -96,6 +103,7 @@ bool savePassword(String &inputPassword) {
     if (actualPassword.length() < MIN_PASSWORD_LENGTH || actualPassword.length() > MAX_PASSWORD_LENGTH) {
         esplogW(TAG_LIB_AUTH, "(savePassword)", "Failed to save new password! Password was too short or too long!");
         passwordFile.close();
+        displayNotification(NOTIFICATION_AUTH_SET_ERROR);
         return false;
     }
 
@@ -104,6 +112,7 @@ bool savePassword(String &inputPassword) {
     passwordFile.println(actualPassword);
     passwordFile.println(hashedPassword);
     passwordFile.close();
+    displayNotification(NOTIFICATION_AUTH_SET_SUCCESS);
     return true;
 }
 
@@ -114,6 +123,7 @@ bool saveNewPassword(String &inputDoublePassword) {
         esplogW(TAG_LIB_AUTH, "(saveNewPassword)", "Password file found, rewriting!");
         if (!SD.remove(LOCK_FILE)) {
             esplogE(TAG_LIB_AUTH, "(saveNewPassword)", "Failed to rewrite existing file: %s!", LOCK_FILE);
+            displayNotification(NOTIFICATION_AUTH_SET_ERROR);
             return false;
         }
     }
@@ -123,6 +133,7 @@ bool saveNewPassword(String &inputDoublePassword) {
 
     if (firstDelimiterPos == -1 || secondDelimiterPos == -1 || firstDelimiterPos == secondDelimiterPos) {
         esplogW(TAG_LIB_AUTH, "(saveNewPassword)", "Failed to save new password! Password string parsing error! Unexpected string format: %s", inputDoublePassword);
+        displayNotification(NOTIFICATION_AUTH_SET_ERROR);
         return false;
     }
 
@@ -131,17 +142,20 @@ bool saveNewPassword(String &inputDoublePassword) {
     
     if (firstPassword != secondPassword) {
         esplogW(TAG_LIB_AUTH, "(saveNewPassword)", "Failed to save new password! Different passwords were written on setup!\n - first:  %s\n - second: %s", firstPassword, secondPassword);
+        displayNotification(NOTIFICATION_AUTH_SET_ERROR);
         return false;
     }
 
     if (firstPassword.length() < MIN_PASSWORD_LENGTH || firstPassword.length() > MAX_PASSWORD_LENGTH) {
         esplogW(TAG_LIB_AUTH, "(saveNewPassword)", "Failed to save new password! Password was too short or too long!");
+        displayNotification(NOTIFICATION_AUTH_SET_ERROR);
         return false;
     }
 
     File passwordFile = SD.open(LOCK_FILE, "w");
     if (!passwordFile) {
         esplogE(TAG_LIB_AUTH, "(saveNewPassword)", "Failed to open password file: %s when writing! Unexpected error!", LOCK_FILE);
+        displayNotification(NOTIFICATION_AUTH_SET_ERROR);
         return false;
     }
 
@@ -150,6 +164,7 @@ bool saveNewPassword(String &inputDoublePassword) {
     passwordFile.println(firstPassword);
     passwordFile.println(hashedPassword);
     passwordFile.close();
+    displayNotification(NOTIFICATION_AUTH_SET_SUCCESS);
     return true;
 }
 
@@ -221,6 +236,7 @@ bool addRfid(String &inputRfid) {
     rfidFile.close();
     if (recordFound) {
         esplogW(TAG_LIB_AUTH, "(addRfid)", "RFID UID already added: %s! Ignoring...", inputRfid);
+        displayNotification(NOTIFICATION_RFID_ADD_SUCCESS);
         return true;
     }
 
@@ -234,6 +250,7 @@ bool addRfid(String &inputRfid) {
 
     if (!rfidFile) {
         esplogE(TAG_LIB_AUTH, "(addRfid)", "Failed to open RFID file: %s! Unexpected error!", RFID_FILE);
+        displayNotification(NOTIFICATION_RFID_ADD_ERROR);
         return false;
     }
 
@@ -241,6 +258,7 @@ bool addRfid(String &inputRfid) {
 
     rfidFile.println(inputRfid);
     rfidFile.close();
+    displayNotification(NOTIFICATION_RFID_ADD_SUCCESS);
     return true;
 }
 
@@ -249,12 +267,14 @@ bool delRfid(String &inputRfid) {
     inputRfid.trim();
     if (!SD.exists(RFID_FILE)) {
         esplogW(TAG_LIB_AUTH, "(delRfid)", "RFID file not found!");
+        displayNotification(NOTIFICATION_RFID_DEL_ERROR);
         return false;
     }
 
     File rfidFile = SD.open(RFID_FILE, "r");
     if (!rfidFile) {
         esplogE(TAG_LIB_AUTH, "(delRfid)", "Failed to open RFID file: %s! Unexpected error!", RFID_FILE);
+        displayNotification(NOTIFICATION_RFID_DEL_ERROR);
         return false;
     }
 
@@ -262,6 +282,7 @@ bool delRfid(String &inputRfid) {
     if (!tempFile) {
         esplogE(TAG_LIB_AUTH, "(delRfid)", "Failed to create temporary file: %s! Unexpected error!", RFID_TMP_FILE);
         rfidFile.close();
+        displayNotification(NOTIFICATION_RFID_DEL_ERROR);
         return false;
     }
 
@@ -284,20 +305,24 @@ bool delRfid(String &inputRfid) {
     if (!recordFound) {
         esplogW(TAG_LIB_AUTH, "(delRfid)", "RFID record not found!");
         SD.remove(RFID_TMP_FILE);
+        displayNotification(NOTIFICATION_RFID_DEL_ERROR);
         return false;
     }
 
     if (!SD.remove(RFID_FILE)) {
         esplogE(TAG_LIB_AUTH, "(delRfid)", "Failed to delete the original RFID file!");
+        displayNotification(NOTIFICATION_RFID_DEL_ERROR);
         return false;
     }
 
     if (!SD.rename(RFID_TMP_FILE, RFID_FILE)) {
         esplogE(TAG_LIB_AUTH, "(delRfid)", "Failed to rename temporary file to RFID file!");
+        displayNotification(NOTIFICATION_RFID_DEL_ERROR);
         return false;
     }
 
     esplogI(TAG_LIB_AUTH, "(delRfid)", "Successfully deleted RFID record and updated the file.");
+    displayNotification(NOTIFICATION_RFID_DEL_SUCCESS);
     return true;
 }
 
@@ -311,12 +336,14 @@ bool checkRfid(String &inputRfid) {
     inputRfid.trim();
     if (!SD.exists(RFID_FILE)) {
         esplogW(TAG_LIB_AUTH, "(checkRfid)", "RFID file not found!");
+        displayNotification(NOTIFICATION_RFID_CHECK_ERROR);
         return false;
     }
 
     File rfidFile = SD.open(RFID_FILE, "r");
     if (!rfidFile) {
         esplogE(TAG_LIB_AUTH, "(checkRfid)", "Failed to open RFID file: %s! Unexpected error!", RFID_FILE);
+        displayNotification(NOTIFICATION_RFID_CHECK_ERROR);
         return false;
     }
 
@@ -336,9 +363,11 @@ bool checkRfid(String &inputRfid) {
 
     if (recordFound) {
         esplogI(TAG_LIB_AUTH, "(checkRfid)", "RFID record exists.");
+        displayNotification(NOTIFICATION_RFID_CHECK_SUCCESS);
         return true;
     } else {
         esplogW(TAG_LIB_AUTH, "(checkRfid)", "RFID record not found.");
+        displayNotification(NOTIFICATION_RFID_CHECK_ERROR);
         return false;
     }
 }

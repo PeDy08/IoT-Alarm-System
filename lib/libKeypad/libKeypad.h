@@ -32,6 +32,6 @@ bool isValidChar(char input);
  * 
  * Recognises the active state and decides what to do with keypad event.
  */
-void keypadEvent(g_vars_t * g_vars, g_config_t * g_config, char key);
+void keypadEvent(char key);
 
 #endif

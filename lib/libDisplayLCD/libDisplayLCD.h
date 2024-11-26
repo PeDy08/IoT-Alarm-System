@@ -12,7 +12,6 @@
 #include <LiquidCrystal_I2C.h>
 
 #include "utils.h"
-#include "libAuth.h"
 #include "mainAppDefinitions.h"
 
 #define LCD_COLS 20
@@ -23,14 +22,14 @@ extern LiquidCrystal_I2C display;
 
 void initLcd();
 
-void authScreenC(g_vars_t * g_vars);
-void authScreenE(g_vars_t * g_vars);
-void authScreenS(g_vars_t * g_vars);
-void rfidScreenC(g_vars_t * g_vars, const char * uid);
-void rfidScreenE(g_vars_t * g_vars, const char * uid);
-void rfidScreenA(g_vars_t * g_vars, const char * uid);
-void rfidScreenD(g_vars_t * g_vars, const char * uid);
-void loadScreen(g_vars_t * g_vars, g_config_t * g_config, bool reboot = false);
+// void authScreenC(g_vars_t * g_vars);
+// void authScreenE(g_vars_t * g_vars);
+// void authScreenS(g_vars_t * g_vars);
+// void rfidScreenC(g_vars_t * g_vars, const char * uid);
+// void rfidScreenE(g_vars_t * g_vars, const char * uid);
+// void rfidScreenA(g_vars_t * g_vars, const char * uid);
+// void rfidScreenD(g_vars_t * g_vars, const char * uid);
+// void loadScreen(g_vars_t * g_vars, g_config_t * g_config, bool reboot = false);
 
 void loadScreenInit(g_vars_t * g_vars);
 void loadScreenSetup(g_vars_t * g_vars);

@@ -29,8 +29,6 @@
 #define WIFI_AP_SSID "IoT Alarm Setup"
 #define WIFI_AP_PSWD ""
 
-extern g_config_t g_config;
-
 /**
  * @brief Starts the Wi-Fi Access Point and web server for configuration.
  * 

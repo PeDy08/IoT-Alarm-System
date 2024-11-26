@@ -16,7 +16,7 @@ void initLcd() {
     display.print("Petr Zerzan");
 }
 
-void authScreenC(g_vars_t * g_vars) {
+/* void authScreenC(g_vars_t * g_vars) {
     display.clear();
     display.setCursor(0, 0);
     display.print("auth: SUCCESS");
@@ -86,7 +86,7 @@ void rfidScreenD(g_vars_t * g_vars, const char * uid) {
     display.printf("UID: %s", uid);
     display.setCursor(0, 2);
     delay(1000);
-}
+} */
 
 void loadScreen(g_vars_t * g_vars, g_config_t * g_config, bool reboot) {
     display.clear();

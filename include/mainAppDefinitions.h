@@ -181,6 +181,18 @@ inline const char* getSelectionText(States state, int selection, bool pretty = f
     }
 }
 
+typedef struct {
+    bool refresh;
+    bool refresh_selection;
+    bool refresh_datetime;
+    bool refresh_status;
+    bool refresh_pin;
+    bool refresh_attempts;
+    bool refresh_alarm_status;
+    bool refresh_events;
+    bool refresh_countdown;
+} refresh_display_t;
+
 struct g_vars_t {
     States state;                       // state
     States state_prev;                  // previous state
@@ -194,6 +206,7 @@ struct g_vars_t {
     bool confirm;                       // confirm flag (user input)
     bool abort;                         // abort flag (user input)
     bool refresh;                       // refresh flag (user input)
+    refresh_display_t refresh_display;  // refresh flags for display
 
     int wifi_status;                    // wifi status (connected, disconnected...)
     int wifi_mode;                      // wifi mode (STA, AP)
@@ -214,6 +227,18 @@ struct g_vars_t {
     bool alarm_event_water;             // detected water leakage alarm event (zigbee sensors)
     unsigned long time_temp;            // temporary time variable (for countdowns)
 };
+
+inline bool refresh_display_any(refresh_display_t refresh_display, g_vars_t g_vars) {
+    return  g_vars.refresh_display.refresh ||
+            g_vars.refresh_display.refresh_selection ||
+            g_vars.refresh_display.refresh_datetime ||
+            g_vars.refresh_display.refresh_status ||
+            g_vars.refresh_display.refresh_pin ||
+            g_vars.refresh_display.refresh_attempts ||
+            g_vars.refresh_display.refresh_alarm_status ||
+            g_vars.refresh_display.refresh_events ||
+            g_vars.refresh_display.refresh_countdown;
+}
 
 // every param needs to be added and handeled in:
 //  - wifimanager.html

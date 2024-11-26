@@ -17,10 +17,6 @@
 #include "libZigbee.h"
 #include "mainAppDefinitions.h"
 
-extern g_vars_t g_vars;
-extern g_config_t g_config;
-extern QueueHandle_t mqttQueue;
-
 extern WiFiClient mqttwificlient;
 extern WiFiClientSecure mqttwificlientsecure;
 extern PubSubClient mqtt;

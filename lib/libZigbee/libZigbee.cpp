@@ -2,6 +2,10 @@
 
 HardwareSerial SerialZigbee(2);
 
+extern TaskHandle_t handleTaskZigbee;
+extern g_vars_t * g_vars_ptr;
+extern g_config_t * g_config_ptr;
+
 void updateSerialZigbee() {
     while (Serial.available()) {
         SerialZigbee.write(Serial.read());
@@ -214,7 +218,7 @@ bool zigbeeClear() {
         ret = false;
     } else {
         esplogI(TAG_LIB_ZIGBEE, "(zigbeeClear)", "Clear zigbee network command sent to zigbee module!");
-        zigbeeScreenD(&g_vars, &g_config);
+        displayNotification(NOTIFICATION_ZIGBEE_NET_CLEAR);
     }
 
     destroy_message(&msg);
@@ -293,9 +297,9 @@ bool zigbeeAttrReportHandler(iot_alarm_attr_load_t * attr) {
             case 0x05000225U:
                 if (attr->attr_id == 0x0002 && attr->value == 1) {
                     esplogW(TAG_RTOS_ZIGBEE, "(zigbeeAttrReportHandler)", "Alarm event triggered! [ZONESTATUS = 1 at 0x%04hx/%d]", attr->short_addr, attr->endpoint_id);
-                    zigbeeScreenR(&g_vars, &g_config);
-                    if (g_vars.state == STATE_ALARM_OK || g_vars.state == STATE_ALARM_W || g_vars.state == STATE_ALARM_E) {
-                        g_vars.alarm_events++;
+                    displayNotification(NOTIFICATION_ZIGBEE_ATTR_REPORT);
+                    if (g_vars_ptr->state == STATE_ALARM_OK || g_vars_ptr->state == STATE_ALARM_W || g_vars_ptr->state == STATE_ALARM_E) {
+                        g_vars_ptr->alarm_events++;
                     }
                 }
                 break;
@@ -305,9 +309,9 @@ bool zigbeeAttrReportHandler(iot_alarm_attr_load_t * attr) {
             case 0x04060002U:
                 if (attr->attr_id == 0x0000 && attr->value == 1) {
                     esplogW(TAG_RTOS_ZIGBEE, "(zigbeeAttrReportHandler)", "Alarm event triggered! [OCCUPANCY = 1 at 0x%04hx/%d]", attr->short_addr, attr->endpoint_id);
-                    zigbeeScreenR(&g_vars, &g_config);
-                    if (g_vars.state == STATE_ALARM_OK || g_vars.state == STATE_ALARM_W || g_vars.state == STATE_ALARM_E) {
-                        g_vars.alarm_events++;
+                    displayNotification(NOTIFICATION_ZIGBEE_ATTR_REPORT);
+                    if (g_vars_ptr->state == STATE_ALARM_OK || g_vars_ptr->state == STATE_ALARM_W || g_vars_ptr->state == STATE_ALARM_E) {
+                        g_vars_ptr->alarm_events++;
                     }
                 }
                 break;
@@ -317,8 +321,8 @@ bool zigbeeAttrReportHandler(iot_alarm_attr_load_t * attr) {
             case 0x0500002BU:
                 if (attr->attr_id == 0x0002) {
                     if (attr->value == 1) {esplogW(TAG_RTOS_ZIGBEE, "(zigbeeAttrReportHandler)", "Fire alarm triggered! [ZONESTATUS = 1 at 0x%04hx/%d]", attr->short_addr, attr->endpoint_id);}
-                    if (g_vars.state == STATE_ALARM_OK || g_vars.state == STATE_ALARM_W || g_vars.state == STATE_ALARM_E) {
-                        g_vars.alarm_event_fire = attr->value > 0;
+                    if (g_vars_ptr->state == STATE_ALARM_OK || g_vars_ptr->state == STATE_ALARM_W || g_vars_ptr->state == STATE_ALARM_E) {
+                        g_vars_ptr->alarm_event_fire = attr->value > 0;
                     }
                 }
                 break;
@@ -327,7 +331,7 @@ bool zigbeeAttrReportHandler(iot_alarm_attr_load_t * attr) {
             case 0x0500002AU:
                 if (attr->attr_id == 0x0002) {
                     if (attr->value == 1) {esplogW(TAG_RTOS_ZIGBEE, "(zigbeeAttrReportHandler)", "Water-leakage alarm triggered! [ZONESTATUS = 1 at 0x%04hx/%d]", attr->short_addr, attr->endpoint_id);}
-                    g_vars.alarm_event_water = attr->value > 0;
+                    g_vars_ptr->alarm_event_water = attr->value > 0;
                 }
                 break;
 
@@ -967,7 +971,7 @@ bool pack_attr(iot_alarm_attr_load_t * attr, String * jsonStr) {
     doc["attr_id"] = attr->attr_id;
     doc["value_type"] = attr->value_type;
     doc["value"] = attr->value;
-    doc["timestamp"] = g_vars.datetime;
+    doc["timestamp"] = g_vars_ptr->datetime;
 
     // Serialize JSON to String
     if (serializeJson(doc, *jsonStr) == 0) {

@@ -39,6 +39,17 @@ g_vars_t g_vars = {
   .confirm = false,
   .abort = false,
   .refresh = true,
+  .refresh_display = {
+    .refresh = 0,
+    .refresh_selection = 0,
+    .refresh_datetime = 0,
+    .refresh_status = 0,
+    .refresh_pin = 0,
+    .refresh_attempts = 0,
+    .refresh_alarm_status = 0,
+    .refresh_events = 0,
+    .refresh_countdown = 0,
+  },
 
   .wifi_status = WL_IDLE_STATUS,
   .wifi_mode = WIFI_MODE_NULL,
@@ -59,6 +70,9 @@ g_vars_t g_vars = {
   .alarm_event_water = 0,
   .time_temp = 0,
 };
+
+g_vars_t * g_vars_ptr = &g_vars;
+g_config_t * g_config_ptr = &g_config;
 
 // -------------------------------------------------------------------------------------------------------------
 /* MAIN APPLICATION SETUP */
@@ -208,7 +222,7 @@ void rtosKeypad(void* parameters) {
 
     if (key != key_last) {
       if (isValidChar(key)) {
-        keypadEvent(&g_vars, &g_config, key);
+        keypadEvent(key);
         g_vars.refresh = true;
       }
 
@@ -266,7 +280,7 @@ void rtosDatetime(void* parameters) {
     g_vars.time = String(timeBuffer);
     g_vars.date = String(dateBuffer);
 
-    updateScreen(&g_vars, &g_config, UPDATE_DATETIME);
+    g_vars.refresh_display.refresh_datetime = true;
     vTaskDelay(60 * 1000 / portTICK_PERIOD_MS);
     esplogI(TAG_RTOS_DATETIME, NULL, "Time has been updated! %s %s", g_vars.date, g_vars.time);
   }
@@ -297,7 +311,7 @@ loop:
       case WL_CONNECTED:
         esplogI(TAG_RTOS_WIFI, NULL, "WiFi periodic check passed!\n - status: WL_CONNECTED\n - rssi: %d\n - ip: %s", WiFi.RSSI(), WiFi.localIP().toString().c_str());
         g_vars.wifi_strength = WiFi.RSSI();
-        updateScreen(&g_vars, &g_config, UPDATE_STATUS);
+        g_vars.refresh_display.refresh_status = true;
         // TODO is it good idea? what if robber shut down internet connection on purpose? --- than alarm will work only as gsm notifier!
         vTaskDelay(5 * 60 * 1000 / portTICK_PERIOD_MS);
         break;
@@ -350,16 +364,37 @@ skiploop:
 /* DISPLAY REFRESHER HANDELER */
 void rtosDisplay(void* parameters) {
   // esplogI("[setup]: rtosDisplay task was created!\n");
+  notification_t * notification;
   for (;;) {
     // if state hasn't changed && no notification is in queue -> delay task and loop
-    // based on current state prepare display content
-    // based on notification queue prepare display content
-    // send data to display all at once
-    // wait till display is ready
-    // loop
+    if (refresh_display_any(g_vars.refresh_display, g_vars)) {
+      // based on current state prepare display content
+      // send data to display all at once
+      // wait till display is ready
+      displayLoad();
 
-    // delete following line (delay from display busy is more significant)
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
+      // based on notification queue prepare display content
+      // send data to display all at once
+      // wait till display is ready
+      if (xQueueReceive(queueNotification, &notification, 5) == pdTRUE) {
+        if (notification != NULL) {
+          // function to display notification
+          displayNotificationHandler(notification->id, notification->param);
+          g_vars.refresh_display.refresh = true;
+          free(notification);
+          notification == NULL;
+
+          if (notification->duration > 0) {
+            vTaskDelay(notification->duration / portTICK_PERIOD_MS);
+          } else {
+            vTaskDelay(1000 / portTICK_PERIOD_MS);
+          }
+        }
+      }
+
+    } else {
+      vTaskDelay(500 / portTICK_PERIOD_MS);
+    }
   }
 }
 
@@ -432,6 +467,7 @@ void rtosMqtt(void* parameters) {
         }
 
         free(message);
+        message = NULL;
       }
     } */
 
@@ -491,7 +527,7 @@ void rtosZigbee(void* parameters) {
           case IOT_ALARM_MSGTYPE_DEV_COUNT:
             if (msg->load != NULL) {
               device_count = (uint8_t)atoi(msg->load);
-              zigbeeScreenN(&g_vars, &g_config, device_count);
+              displayNotification(NOTIFICATION_ZIGBEE_DEV_COUNT, (int)device_count);
             }
             break;
 
@@ -565,17 +601,21 @@ void rtosZigbee(void* parameters) {
             break;
 
           case IOT_ALARM_MSGTYPE_ZB_DEV_LOCK:
-            zigbeeScreenC(&g_vars, &g_config);
+            displayNotification(NOTIFICATION_ZIGBEE_NET_CLOSE);
             break;
 
           case IOT_ALARM_MSGTYPE_ZB_DEV_UNLOCK:
             duration = (uint8_t)atoi(msg->load);
-            zigbeeScreenO(&g_vars, &g_config, duration);
+            displayNotification(NOTIFICATION_ZIGBEE_NET_OPEN, (int)duration);
             break;
 
-          // case IOT_ALARM_MSGTYPE_ZB_DEV_NEW:
-          // case IOT_ALARM_MSGTYPE_ZB_DEV_LEAVE:
-          //   break;
+          case IOT_ALARM_MSGTYPE_ZB_DEV_NEW:
+            displayNotification(NOTIFICATION_ZIGBEE_DEV_ANNCE);
+            break;
+
+          case IOT_ALARM_MSGTYPE_ZB_DEV_LEAVE:
+            displayNotification(NOTIFICATION_ZIGBEE_DEV_LEAVE);
+            break;
           
           default:
             break;
@@ -646,7 +686,7 @@ void rtosAlarm(void* testmode) {
           }
         } else {
           g_vars.time_temp = curr_time - w_time;
-          updateScreen(&g_vars, &g_config, UPDATE_COUNTDOWN);
+          g_vars.refresh_display.refresh_countdown = true;
           continue;
         }
       }
@@ -689,14 +729,13 @@ void rtosRfid(void* parameters) {
     if (g_vars.state == STATE_SETUP_RFID_ADD) {
       esplogI(TAG_RTOS_RFID, NULL, "Adding new UID: %s", rfid_card.c_str());
       addRfid(rfid_card);
-      rfidScreenA(&g_vars, rfid_card.c_str());
+      displayNotification(NOTIFICATION_RFID_ADD_SUCCESS);
       setState(STATE_SETUP, -1, SELECTION_SETUP_MAX);
     }
 
     else if (g_vars.state == STATE_SETUP_RFID_DEL) {
       esplogI(TAG_RTOS_RFID, NULL, "Deleting UID: %s", rfid_card.c_str());
       delRfid(rfid_card);
-      rfidScreenD(&g_vars, rfid_card.c_str());
       setState(STATE_SETUP, -1, SELECTION_SETUP_MAX);
     }
 
@@ -704,21 +743,18 @@ void rtosRfid(void* parameters) {
       esplogI(TAG_RTOS_RFID, NULL, "Card was authorised!");
       switch (g_vars.state) {
         case STATE_SETUP_RFID_ADD_ENTER_PIN:
-          rfidScreenC(&g_vars, rfid_card.c_str());
           setState(STATE_SETUP_RFID_ADD, -1, 0, "", 0);
           g_vars.refresh = true;
           continue;
           break;
 
         case STATE_SETUP_RFID_DEL_ENTER_PIN:
-          rfidScreenC(&g_vars, rfid_card.c_str());
           setState(STATE_SETUP_RFID_DEL, -1, 0, "", 0);
           g_vars.refresh = true;
           continue;
           break;
 
         case STATE_SETUP_AP_ENTER_PIN:
-          rfidScreenC(&g_vars, rfid_card.c_str());
           esplogI(TAG_RTOS_MAIN, NULL, "Starting WiFi Setup Mode!");
           setState(STATE_SETUP_AP, 0, 0, "", 0);
           xTaskCreatePinnedToCore(rtosWifiSetup, "wifisetup", 8192, NULL, 1, &handleTaskSetup, CONFIG_ARDUINO_RUNNING_CORE);
@@ -726,56 +762,46 @@ void rtosRfid(void* parameters) {
           break;
 
         case STATE_SETUP_HARD_RESET_ENTER_PIN:
-          rfidScreenC(&g_vars, rfid_card.c_str());
           setState(STATE_SETUP_HARD_RESET, -1, 0, "", 0);
           break;
 
         case STATE_ALARM_LOCK_ENTER_PIN:
-          rfidScreenC(&g_vars, rfid_card.c_str());
           setState(STATE_ALARM_C, -1, 0, "", 0);
           vTaskResume(handleTaskMenuRefresh);
           break;
 
         case STATE_TEST_LOCK_ENTER_PIN:
-          rfidScreenC(&g_vars, rfid_card.c_str());
           setState(STATE_TEST_C, -1, 0, "", 0);
           vTaskResume(handleTaskMenuRefresh);
           break;
 
         case STATE_ALARM_UNLOCK_ENTER_PIN:
-          rfidScreenC(&g_vars, rfid_card.c_str());
           setState(STATE_ALARM_IDLE, -1, SELECTION_ALARM_IDLE_MAX, "", 0);
           break;
 
         case STATE_TEST_UNLOCK_ENTER_PIN:
-          rfidScreenC(&g_vars, rfid_card.c_str());
           setState(STATE_TEST_IDLE, -1, SELECTION_TEST_IDLE_MAX, "", 0);
           break;
 
         case STATE_ALARM_CHANGE_ENTER_PIN1:
-          rfidScreenC(&g_vars, rfid_card.c_str());
           setState(STATE_ALARM_CHANGE_ENTER_PIN2, -1, 0, "", 0);
           break;
 
         case STATE_TEST_CHANGE_ENTER_PIN1:
-          rfidScreenC(&g_vars, rfid_card.c_str());
           setState(STATE_TEST_CHANGE_ENTER_PIN2, -1, 0, "", 0);
           break;
 
         case STATE_SETUP_PIN1:
-          rfidScreenC(&g_vars, rfid_card.c_str());
           setState(STATE_SETUP_PIN2, -1, 0, "", 0);
           break;
 
         case STATE_SETUP_RFID_CHECK:
-          rfidScreenC(&g_vars, rfid_card.c_str());
           setState(STATE_SETUP, -1, SELECTION_SETUP_MAX, "", 0);
           break;
 
         case STATE_ALARM_OK:
         case STATE_ALARM_W:
         case STATE_ALARM_E:
-          authScreenC(&g_vars);
           setState(STATE_ALARM_IDLE, -1, SELECTION_ALARM_IDLE_MAX, "", 0);
           vTaskDelete(handleTaskAlarm);
           break;
@@ -783,7 +809,6 @@ void rtosRfid(void* parameters) {
         case STATE_TEST_OK:
         case STATE_TEST_W:
         case STATE_TEST_E:
-          authScreenC(&g_vars);
           setState(STATE_TEST_IDLE, -1, SELECTION_TEST_IDLE_MAX, "", 0);
           vTaskDelete(handleTaskAlarm);
           break;
@@ -795,7 +820,6 @@ void rtosRfid(void* parameters) {
       vTaskSuspend(handleTaskRfidRefresh);
     } else {
       esplogI(TAG_RTOS_RFID, NULL, "Card was not authorised!");
-      rfidScreenE(&g_vars, rfid_card.c_str());
       setState(STATE_MAX, -1, -1, "NULL", g_vars.attempts+1);
     }
     g_vars.refresh = true;
@@ -825,7 +849,7 @@ void rtosMenu(void* parameters) {
           vTaskSuspend(handleTaskRfidRefresh);
         }
         else if (g_vars.state == STATE_SETUP_HARD_RESET) {
-          loadScreen(&g_vars, &g_config, true);
+          displayRestart();
           rebootESP();
         }
         g_vars.abort = false;
@@ -847,7 +871,7 @@ void rtosMenu(void* parameters) {
                 setState(STATE_TEST_IDLE, 0, SELECTION_TEST_IDLE_MAX);
                 break;
               case SELECTION_INIT_REBOOT:
-                loadScreen(&g_vars, &g_config, true);
+                displayRestart();
                 rebootESP();
                 break;
             }
@@ -948,11 +972,9 @@ void rtosMenu(void* parameters) {
           case STATE_SETUP_RFID_ADD_ENTER_PIN:
             esplogI(TAG_RTOS_MAIN, NULL, "Entered pin: %s", g_vars.pin.c_str());
             if (checkPassword(g_vars.pin)) {
-              authScreenC(&g_vars);
               setState(STATE_SETUP_RFID_ADD, 0, 0, "", 0);
               vTaskResume(handleTaskRfidRefresh);
             } else {
-              authScreenE(&g_vars);
               setState(STATE_SETUP, 0, SELECTION_SETUP_MAX, "", g_vars.attempts+1);
               vTaskSuspend(handleTaskRfidRefresh);
             }
@@ -961,11 +983,9 @@ void rtosMenu(void* parameters) {
           case STATE_SETUP_RFID_DEL_ENTER_PIN:
             esplogI(TAG_RTOS_MAIN, NULL, "Entered pin: %s", g_vars.pin.c_str());
             if (checkPassword(g_vars.pin)) {
-              authScreenC(&g_vars);
               setState(STATE_SETUP_RFID_DEL, 0, 0, "", 0);
               vTaskResume(handleTaskRfidRefresh);
             } else {
-              authScreenE(&g_vars);
               setState(STATE_SETUP, 0, SELECTION_SETUP_MAX, "", g_vars.attempts+1);
               vTaskSuspend(handleTaskRfidRefresh);
             }
@@ -975,13 +995,11 @@ void rtosMenu(void* parameters) {
             esplogI(TAG_RTOS_MAIN, NULL, "Entered pin: %s", g_vars.pin.c_str());
             if (checkPassword(g_vars.pin)) {
               esplogI(TAG_RTOS_MAIN, NULL, "Starting WiFi Setup Mode!");
-              authScreenC(&g_vars);
               setState(STATE_SETUP_AP, 0, 0, "", 0);
               vTaskSuspend(handleTaskRfidRefresh);
               xTaskCreatePinnedToCore(rtosWifiSetup, "wifisetup", 8192, NULL, 1, &handleTaskSetup, CONFIG_ARDUINO_RUNNING_CORE);
               vTaskSuspend(NULL);
             } else {
-              authScreenE(&g_vars);
               setState(STATE_SETUP, 0, SELECTION_SETUP_MAX, "", g_vars.attempts+1);
               vTaskSuspend(handleTaskRfidRefresh);
             }
@@ -990,11 +1008,9 @@ void rtosMenu(void* parameters) {
           case STATE_SETUP_HARD_RESET_ENTER_PIN:
             esplogI(TAG_RTOS_MAIN, NULL, "Entered pin: %s", g_vars.pin.c_str());
             if (checkPassword(g_vars.pin)) {
-              authScreenC(&g_vars);
               setState(STATE_SETUP_HARD_RESET, 0, 0, "", 0);
               vTaskSuspend(handleTaskRfidRefresh);
             } else {
-              authScreenE(&g_vars);
               setState(STATE_SETUP, 0, SELECTION_SETUP_MAX, "", g_vars.attempts+1);
               vTaskSuspend(handleTaskRfidRefresh);
             }
@@ -1007,7 +1023,7 @@ void rtosMenu(void* parameters) {
             SD.remove(LOG_FILE_OLD);
             SD.remove(LOCK_FILE);
             SD.remove(RFID_FILE);
-            loadScreen(&g_vars, &g_config, true);
+            displayRestart();
             rebootESP();
             break;
 
@@ -1042,7 +1058,7 @@ void rtosMenu(void* parameters) {
                 setState(STATE_INIT, 0, SELECTION_INIT_MAX);
                 break;
               case SELECTION_ALARM_IDLE_REBOOT:
-                loadScreen(&g_vars, &g_config, true);
+                displayRestart();
                 rebootESP();
                 break;
             }
@@ -1071,7 +1087,7 @@ void rtosMenu(void* parameters) {
                 setState(STATE_INIT, 0, SELECTION_INIT_MAX);
                 break;
               case SELECTION_TEST_IDLE_REBOOT:
-                loadScreen(&g_vars, &g_config, true);
+                displayRestart();
                 rebootESP();
                 break;
             }
@@ -1092,7 +1108,7 @@ void rtosMenu(void* parameters) {
               g_vars.refresh = false;
               g_vars.confirm = false;
               g_vars.time_temp = curr_time - lock_time;
-              updateScreen(&g_vars, &g_config, UPDATE_COUNTDOWN);
+              g_vars.refresh_display.refresh_countdown = true;
               continue;
             }
             break;
@@ -1111,7 +1127,7 @@ void rtosMenu(void* parameters) {
               g_vars.refresh = false;
               g_vars.confirm = false;
               g_vars.time_temp = curr_time - lock_time;
-              updateScreen(&g_vars, &g_config, UPDATE_COUNTDOWN);
+              g_vars.refresh_display.refresh_countdown = true;
               continue;
             }
             break;
@@ -1123,13 +1139,11 @@ void rtosMenu(void* parameters) {
           case STATE_ALARM_E:
             esplogI(TAG_RTOS_MAIN, NULL, "Entered pin: %s", g_vars.pin.c_str());
             if (checkPassword(g_vars.pin)) {
-              authScreenC(&g_vars);
               setState(STATE_ALARM_IDLE, 0, SELECTION_ALARM_IDLE_MAX, "", 0);
               vTaskDelete(handleTaskAlarm);
               vTaskSuspend(handleTaskRfidRefresh);
               g_vars.alarm_events = 0;
             } else {
-              authScreenE(&g_vars);
               setState(STATE_MAX, -1, -1, "", g_vars.attempts+1);
               vTaskSuspend(handleTaskRfidRefresh);
               vTaskResume(handleTaskRfidRefresh);
@@ -1142,13 +1156,11 @@ void rtosMenu(void* parameters) {
           case STATE_TEST_E:
             esplogI(TAG_RTOS_MAIN, NULL, "Entered pin: %s", g_vars.pin.c_str());
             if (checkPassword(g_vars.pin)) {
-              authScreenC(&g_vars);
               setState(STATE_TEST_IDLE, 0, SELECTION_TEST_IDLE_MAX, "", 0);
               vTaskDelete(handleTaskAlarm);
               vTaskSuspend(handleTaskRfidRefresh);
               g_vars.alarm_events = 0;
             } else {
-              authScreenE(&g_vars);
               setState(STATE_MAX, -1, -1, "", g_vars.attempts+1);
               vTaskSuspend(handleTaskRfidRefresh);
               vTaskResume(handleTaskRfidRefresh);
@@ -1160,13 +1172,11 @@ void rtosMenu(void* parameters) {
           case STATE_ALARM_LOCK_ENTER_PIN:
             esplogI(TAG_RTOS_MAIN, NULL, "Entered pin: %s", g_vars.pin.c_str());
             if (checkPassword(g_vars.pin)) {
-              authScreenC(&g_vars);
               lock_time = millis();
               setState(STATE_ALARM_C, 0, 0, "", 0);
               vTaskSuspend(handleTaskRfidRefresh);
               vTaskResume(handleTaskMenuRefresh);
             } else {
-              authScreenE(&g_vars);
               setState(STATE_ALARM_IDLE, 0, SELECTION_ALARM_IDLE_MAX, "", g_vars.attempts+1);
               vTaskSuspend(handleTaskRfidRefresh);
             }
@@ -1176,13 +1186,11 @@ void rtosMenu(void* parameters) {
           case STATE_TEST_LOCK_ENTER_PIN:
             esplogI(TAG_RTOS_MAIN, NULL, "Entered pin: %s", g_vars.pin.c_str());
             if (checkPassword(g_vars.pin)) {
-              authScreenC(&g_vars);
               lock_time = millis();
               setState(STATE_TEST_C, 0, 0, "", 0);
               vTaskSuspend(handleTaskRfidRefresh);
               vTaskResume(handleTaskMenuRefresh);
             } else {
-              authScreenE(&g_vars);
               setState(STATE_TEST_IDLE, 0, SELECTION_TEST_IDLE_MAX, "", g_vars.attempts+1);
               vTaskSuspend(handleTaskRfidRefresh);
             }
@@ -1192,11 +1200,9 @@ void rtosMenu(void* parameters) {
           case STATE_ALARM_UNLOCK_ENTER_PIN:
             esplogI(TAG_RTOS_MAIN, NULL, "Entered pin: %s", g_vars.pin.c_str());
             if (checkPassword(g_vars.pin)) {
-              authScreenC(&g_vars);
               setState(STATE_ALARM_IDLE, 0, SELECTION_ALARM_IDLE_MAX, "", 0);
               vTaskSuspend(handleTaskRfidRefresh);
             } else {
-              authScreenE(&g_vars);
               setState(STATE_ALARM_UNLOCK_ENTER_PIN, 0, 0, "", g_vars.attempts+1);
               vTaskSuspend(handleTaskRfidRefresh);
             }
@@ -1206,11 +1212,9 @@ void rtosMenu(void* parameters) {
           case STATE_TEST_UNLOCK_ENTER_PIN:
             esplogI(TAG_RTOS_MAIN, NULL, "Entered pin: %s", g_vars.pin.c_str());
             if (checkPassword(g_vars.pin)) {
-              authScreenC(&g_vars);
               setState(STATE_TEST_IDLE, 0, SELECTION_TEST_IDLE_MAX, "", 0);
               vTaskSuspend(handleTaskRfidRefresh);
             } else {
-              authScreenE(&g_vars);
               setState(STATE_TEST_UNLOCK_ENTER_PIN, 0, 0, "", g_vars.attempts+1);
               vTaskSuspend(handleTaskRfidRefresh);
             }
@@ -1220,11 +1224,9 @@ void rtosMenu(void* parameters) {
           case STATE_ALARM_CHANGE_ENTER_PIN1:
             esplogI(TAG_RTOS_MAIN, NULL, "Entered pin: %s", g_vars.pin.c_str());
             if (checkPassword(g_vars.pin)) {
-              authScreenC(&g_vars);
               setState(STATE_ALARM_CHANGE_ENTER_PIN2, 0, 0, "", 0);
               vTaskSuspend(handleTaskRfidRefresh);
             } else {
-              authScreenE(&g_vars);
               setState(STATE_ALARM_IDLE, 0, SELECTION_ALARM_IDLE_MAX, "", g_vars.attempts+1);
               vTaskSuspend(handleTaskRfidRefresh);
             }
@@ -1234,11 +1236,9 @@ void rtosMenu(void* parameters) {
           case STATE_TEST_CHANGE_ENTER_PIN1:
             esplogI(TAG_RTOS_MAIN, NULL, "Entered pin: %s", g_vars.pin.c_str());
             if (checkPassword(g_vars.pin)) {
-              authScreenC(&g_vars);
               setState(STATE_TEST_CHANGE_ENTER_PIN2, 0, 0, "", 0);
               vTaskSuspend(handleTaskRfidRefresh);
             } else {
-              authScreenE(&g_vars);
               setState(STATE_TEST_IDLE, 0, SELECTION_TEST_IDLE_MAX, "", g_vars.attempts+1);
               vTaskSuspend(handleTaskRfidRefresh);
             }
@@ -1248,11 +1248,9 @@ void rtosMenu(void* parameters) {
           case STATE_SETUP_PIN1:
             esplogI(TAG_RTOS_MAIN, NULL, "Entered pin: %s", g_vars.pin.c_str());
             if (checkPassword(g_vars.pin)) {
-              authScreenC(&g_vars);
               setState(STATE_SETUP_PIN2, 0, 0, "", 0);
               vTaskSuspend(handleTaskRfidRefresh);
             } else {
-              authScreenE(&g_vars);
               setState(STATE_SETUP, 0, SELECTION_SETUP_MAX, "", g_vars.attempts+1);
               vTaskSuspend(handleTaskRfidRefresh);
             }
@@ -1280,10 +1278,8 @@ void rtosMenu(void* parameters) {
           case STATE_ALARM_CHANGE_ENTER_PIN3:
             esplogI(TAG_RTOS_MAIN, NULL, "Entered pin: %s", g_vars.pin.c_str());
             if (saveNewPassword(g_vars.pin)) {
-              authScreenS(&g_vars);
               setState(STATE_ALARM_IDLE, 0, SELECTION_ALARM_IDLE_MAX, "", 0);
             } else {
-              authScreenE(&g_vars);
               setState(STATE_ALARM_CHANGE_ENTER_PIN2, 0, 0, "", g_vars.attempts+1);
             }
             break;
@@ -1292,10 +1288,8 @@ void rtosMenu(void* parameters) {
           case STATE_TEST_CHANGE_ENTER_PIN3:
             esplogI(TAG_RTOS_MAIN, NULL, "Entered pin: %s", g_vars.pin.c_str());
             if (saveNewPassword(g_vars.pin)) {
-              authScreenS(&g_vars);
               setState(STATE_TEST_IDLE, 0, SELECTION_TEST_IDLE_MAX, "", 0);
             } else {
-              authScreenE(&g_vars);
               setState(STATE_TEST_CHANGE_ENTER_PIN2, 0, 0, "", g_vars.attempts+1);
             }
             break;
@@ -1304,10 +1298,8 @@ void rtosMenu(void* parameters) {
           case STATE_SETUP_PIN3:
             esplogI(TAG_RTOS_MAIN, NULL, "Entered pin: %s", g_vars.pin.c_str());
             if (saveNewPassword(g_vars.pin)) {
-              authScreenS(&g_vars);
               setState(STATE_SETUP, 0, SELECTION_SETUP_MAX, "", 0);
             } else {
-              authScreenE(&g_vars);
               setState(STATE_SETUP_PIN2, 0, 0, "", g_vars.attempts+1);
             }
             break;

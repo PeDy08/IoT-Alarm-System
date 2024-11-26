@@ -20,7 +20,17 @@
 
 #include "GxEPD2_display_selection.h"
 U8G2_FOR_ADAFRUIT_GFX u8g2Fonts;
-bool disable_update = false;
+
+extern g_vars_t * g_vars_ptr;
+extern g_config_t * g_config_ptr;
+
+extern QueueHandle_t queueNotification;
+
+void initScreenTemplate(const char * label);
+void menuScreenTemplate(const char * label, int selection, bool test, const char * option1, const char * option2, const char * option3, const char * option4, const char * time, const char * date, int wifi, int gsm, int battery);
+void authScreenTemplate(const char * label, bool test, const char * instructions1, const char * instructions2, String pin, int attempts, const char * time, const char * date, int wifi, int gsm, int battery);
+void rfidScreenTemplate(const char * label, bool test, const char * instructions1, const char * instructions2, int attempts, const char * time, const char * date, int wifi, int gsm, int battery);
+void alarmScreenTemplate(const char * label, bool test, const char * status, const char * data, String pin, int attempts, int data_load, const char * time, const char * date, int wifi, int gsm, int battery);
 
 void updateStatusIcons(int wifi, int gsm, int battery);
 void updateDatetime(const char * date, const char * time);
@@ -57,112 +67,239 @@ void initEink() {
     u8g2Fonts.setBackgroundColor(GxEPD_WHITE);
 
     // show init screen
-    initScreenTemplate("Petr Zerzan");
+    display.setFullWindow();
+    display.firstPage();
+    do {
+        display.fillScreen(GxEPD_WHITE);
+        display.drawRect(0, 0, display.width(), display.height()-6, GxEPD_BLACK);
+        initScreenTemplate("Petr Zerzan");
+    } while (display.nextPage());
 }
 
-void authScreenC(g_vars_t * g_vars) {
-    notificationScreenTemplate("Correct PIN", "Access permited!");
-    waitReady();
-    delay(2500);
-}
-
-void authScreenE(g_vars_t * g_vars) {
-    notificationScreenTemplate("Wrong PIN", "Access denied!");
-    waitReady();
-    delay(2500);
-}
-
-void authScreenS(g_vars_t * g_vars) {
-    notificationScreenTemplate("PIN set", "New PIN was set!");
-    waitReady();
-    delay(2500);
-}
-
-void rfidScreenC(g_vars_t * g_vars, const char * uid) {
-    notificationScreenTemplate("Correct RFID", "RFID card recognised!");
-    waitReady();
-    delay(2500);
-}
-
-void rfidScreenE(g_vars_t * g_vars, const char * uid) {
-    notificationScreenTemplate("Wrong RFID", "RFID card not recognised!");
-    waitReady();
-    delay(2500);
-}
-
-void rfidScreenA(g_vars_t * g_vars, const char * uid) {
-    notificationScreenTemplate("RFID added", "RFID card added!");
-    waitReady();
-    delay(2500);
-}
-
-void rfidScreenD(g_vars_t * g_vars, const char * uid) {
-    notificationScreenTemplate("RFID deleted", "RFID card deleted!");
-    waitReady();
-    delay(2500);
-}
-
-void zigbeeScreenO(g_vars_t * g_vars, g_config_t * g_config, uint8_t duration) {
-    char string[48];
-    sprintf(string, "network joining is now open for %d seconds!", duration);
-    notificationScreenTemplate("ZIGBEE open", string);
-    waitReady();
-    vTaskDelay(2500 / portTICK_PERIOD_MS);
-    loadScreen(g_vars, g_config);
-}
-
-void zigbeeScreenC(g_vars_t * g_vars, g_config_t * g_config) {
-    notificationScreenTemplate("ZIGBEE closed", "network joining is now closed!");
-    waitReady();
-    vTaskDelay(2500 / portTICK_PERIOD_MS);
-    loadScreen(g_vars, g_config);
-}
-
-void zigbeeScreenD(g_vars_t * g_vars, g_config_t * g_config) {
-    notificationScreenTemplate("ZIGBEE cleared", "network has been cleaned!");
-    waitReady();
-    vTaskDelay(2500 / portTICK_PERIOD_MS);
-    loadScreen(g_vars, g_config);
-}
-
-void zigbeeScreenR(g_vars_t * g_vars, g_config_t * g_config) {
-    notificationScreenTemplate("ZIGBEE report", "alarm event has been triggered!");
-    waitReady();
-    vTaskDelay(2500 / portTICK_PERIOD_MS);
-    loadScreen(g_vars, g_config);
-}
-
-void zigbeeScreenN(g_vars_t * g_vars, g_config_t * g_config, uint8_t device_count) {
-    char string[32];
-    sprintf(string, "%d devices are connected!", device_count);
-    notificationScreenTemplate("ZIGBEE count", string);
-    waitReady();
-    vTaskDelay(2500 / portTICK_PERIOD_MS);
-    loadScreen(g_vars, g_config);
-}
-
-void updateScreen(g_vars_t * g_vars, g_config_t * g_config, int param) {
-
-    if (disable_update) {
+void displayNotification(notificationScreenId id, int param, int duration) {
+    notification_t * notification = (notification_t *)malloc(sizeof(notification_t));
+    if (notification == NULL) {
+        esplogW(TAG_LIB_DISPLAY, "(displayNotification)", "Failed to allocate memory for notification queue!");
         return;
     }
 
-    String data;
-    int x, y;
+    notification->id = id;
+    notification->param = param;
+    notification->duration = duration;
 
-    switch (param) {
-        case UPDATE_SELECTION:
+    if (xQueueSend(queueNotification, &notification, pdMS_TO_TICKS(10)) != pdPASS) {
+        esplogW(TAG_LIB_MQTT, "(displayNotification)", "Failed to send notification to queue!");
+        free(notification);
+        return;
+    } else {
+        esplogI(TAG_LIB_MQTT, "(displayNotification)", "Notification has been enqueued! (id: %d)", *notification);
+    }
+}
+
+void displayNotificationHandler(notificationScreenId notification, int param) {
+    char string[48];
+    switch (notification) {
+        case NOTIFICATION_AUTH_CHECK_SUCCESS:
+            notificationScreenTemplate("Correct PIN", "Access permited!");
+            break;
+        case NOTIFICATION_AUTH_CHECK_ERROR:
+            notificationScreenTemplate("Wrong PIN", "Access denied!");
+            break;
+        case NOTIFICATION_AUTH_SET_SUCCESS:
+            notificationScreenTemplate("PIN set", "New PIN was set!");
+            break;
+        case NOTIFICATION_AUTH_SET_ERROR:
+            notificationScreenTemplate("PIN error", "PIN set failed!");
+            break;
+        case NOTIFICATION_RFID_CHECK_SUCCESS:
+            notificationScreenTemplate("Correct RFID", "RFID card recognised!");
+            break;
+        case NOTIFICATION_RFID_CHECK_ERROR:
+            notificationScreenTemplate("Wrong RFID", "RFID card not recognised!");
+            break;
+        case NOTIFICATION_RFID_ADD_SUCCESS:
+            notificationScreenTemplate("RFID added", "RFID card added!");
+            break;
+        case NOTIFICATION_RFID_ADD_ERROR:
+            notificationScreenTemplate("RFID add error", "RFID card add failed!");
+            break;
+        case NOTIFICATION_RFID_DEL_SUCCESS:
+            notificationScreenTemplate("RFID deleted", "RFID card deleted!");
+            break;
+        case NOTIFICATION_RFID_DEL_ERROR:
+            notificationScreenTemplate("RFID delete error", "RFID card delete failed!");
+            break;
+        case NOTIFICATION_ZIGBEE_NET_OPEN:
+            sprintf(string, "network joining is now open for %d seconds!", param);
+            notificationScreenTemplate("ZIGBEE open", string);
+            break;
+        case NOTIFICATION_ZIGBEE_NET_CLOSE:
+            notificationScreenTemplate("ZIGBEE closed", "network joining is now closed!");
+            break;
+        case NOTIFICATION_ZIGBEE_NET_CLEAR:
+            notificationScreenTemplate("ZIGBEE cleared", "network has been cleaned!");
+            break;
+        case NOTIFICATION_ZIGBEE_NET_RESET:
+            break;
+        case NOTIFICATION_ZIGBEE_ATTR_REPORT:
+            notificationScreenTemplate("ZIGBEE report", "alarm event has been triggered!");
+            break;
+        case NOTIFICATION_ZIGBEE_DEV_ANNCE:
+            notificationScreenTemplate("ZIGBEE join", "zigbee device has joined network!");
+            break;
+        case NOTIFICATION_ZIGBEE_DEV_LEAVE:
+            notificationScreenTemplate("ZIGBEE leave", "zigbee device has leaved network!");
+            break;
+        case NOTIFICATION_ZIGBEE_DEV_COUNT:
+            sprintf(string, "%d devices are connected!", param);
+            notificationScreenTemplate("ZIGBEE count", string);
+            break;
+        default:
+            break;
+    }
+
+    waitReady();
+}
+
+void displayRestart() {
+    display.setPartialWindow(0, 0, display.width(), display.height());
+    display.firstPage();
+    do {
+        display.fillScreen(GxEPD_WHITE);
+        display.drawRect(0, 0, display.width(), display.height()-6, GxEPD_BLACK);
+        initScreenTemplate("Rebooting...");
+    } while (display.nextPage());
+}
+
+void displayLoad() {
+    if (g_vars_ptr->refresh_display.refresh) {
+        g_vars_ptr->refresh_display.refresh = false;
+
+        display.setPartialWindow(0, 0, display.width(), display.height());
+        display.firstPage();
+        do {
+            display.fillScreen(GxEPD_WHITE);
+
+            // display border rectangle
+            display.drawRect(0, 0, display.width(), display.height()-6, GxEPD_BLACK); // <- my screen has obviously different height than class expects
+
+            int selection_id = getSelectionId(g_vars_ptr->state, g_vars_ptr->selection);
+            switch (g_vars_ptr->state) {
+                case STATE_INIT:
+                    menuScreenTemplate(getStateText(g_vars_ptr->state, true), selection_id, false, "setup", "alarm", "test mode", "reboot", g_vars_ptr->time.c_str(), g_vars_ptr->date.c_str(), g_vars_ptr->wifi_strength, g_vars_ptr->gsm_strength, g_vars_ptr->battery_level);
+                    break;
+
+                case STATE_SETUP:
+                    menuScreenTemplate(getStateText(g_vars_ptr->state, true), selection_id, false, "WiFi setup", "ZIGBEE setup", "RFID setup", "hard reset", g_vars_ptr->time.c_str(), g_vars_ptr->date.c_str(), g_vars_ptr->wifi_strength, g_vars_ptr->gsm_strength, g_vars_ptr->battery_level);
+                    break;
+
+                case STATE_SETUP_AP:
+                    initScreenTemplate("WiFi AP is now active...");
+                    break;
+
+                case STATE_SETUP_HARD_RESET:
+                    initScreenTemplate("Please confirm hard reset...");
+                    break;
+
+                case STATE_SETUP_RFID_ADD:
+                case STATE_SETUP_RFID_DEL:
+                case STATE_SETUP_RFID_CHECK:
+                    rfidScreenTemplate(getStateText(g_vars_ptr->state, true), false, "Please, insert RFID card:", "", g_vars_ptr->attempts, g_vars_ptr->time.c_str(), g_vars_ptr->date.c_str(), g_vars_ptr->wifi_strength, g_vars_ptr->gsm_strength, g_vars_ptr->battery_level);
+                    break;
+
+                case STATE_ALARM_IDLE:
+                    menuScreenTemplate(getStateText(g_vars_ptr->state, true), selection_id, false, "lock", "PIN setup", "reboot", "", g_vars_ptr->time.c_str(), g_vars_ptr->date.c_str(), g_vars_ptr->wifi_strength, g_vars_ptr->gsm_strength, g_vars_ptr->battery_level);
+                    break;
+
+                case STATE_TEST_IDLE:
+                    menuScreenTemplate(getStateText(g_vars_ptr->state, true), selection_id, true, "lock", "PIN setup", "reboot", "", g_vars_ptr->time.c_str(), g_vars_ptr->date.c_str(), g_vars_ptr->wifi_strength, g_vars_ptr->gsm_strength, g_vars_ptr->battery_level);
+                    break;
+
+                case STATE_ALARM_OK:
+                    alarmScreenTemplate(getStateText(g_vars_ptr->state, true), false, "status: OK", "events", g_vars_ptr->pin.c_str(), g_vars_ptr->attempts, g_vars_ptr->alarm_events, g_vars_ptr->time.c_str(), g_vars_ptr->date.c_str(), g_vars_ptr->wifi_strength, g_vars_ptr->gsm_strength, g_vars_ptr->battery_level);
+                    break;
+
+                case STATE_TEST_OK:
+                    alarmScreenTemplate(getStateText(g_vars_ptr->state, true), true, "status: OK", "events", g_vars_ptr->pin, g_vars_ptr->attempts, g_vars_ptr->alarm_events, g_vars_ptr->time.c_str(), g_vars_ptr->date.c_str(), g_vars_ptr->wifi_strength, g_vars_ptr->gsm_strength, g_vars_ptr->battery_level);
+                    break;
+
+                case STATE_ALARM_C:
+                    alarmScreenTemplate(getStateText(g_vars_ptr->state, true), false, "status: STARTING", "remaining", g_vars_ptr->pin, g_vars_ptr->attempts, (g_config_ptr->alarm_countdown_s*1000-g_vars_ptr->time_temp)/1000, g_vars_ptr->time.c_str(), g_vars_ptr->date.c_str(), g_vars_ptr->wifi_strength, g_vars_ptr->gsm_strength, g_vars_ptr->battery_level);
+                    break;
+
+                case STATE_TEST_C:
+                    alarmScreenTemplate(getStateText(g_vars_ptr->state, true), true, "status: STARTING", "remaining", g_vars_ptr->pin, g_vars_ptr->attempts, (g_config_ptr->alarm_countdown_s*1000-g_vars_ptr->time_temp)/1000, g_vars_ptr->time.c_str(), g_vars_ptr->date.c_str(), g_vars_ptr->wifi_strength, g_vars_ptr->gsm_strength, g_vars_ptr->battery_level);
+                    break;
+
+                case STATE_ALARM_W:
+                    alarmScreenTemplate(getStateText(g_vars_ptr->state, true), false, "status: WARNING", "remaining", g_vars_ptr->pin, g_vars_ptr->attempts, (g_config_ptr->alarm_e_countdown_s*1000-g_vars_ptr->time_temp)/1000, g_vars_ptr->time.c_str(), g_vars_ptr->date.c_str(), g_vars_ptr->wifi_strength, g_vars_ptr->gsm_strength, g_vars_ptr->battery_level);
+                    break;
+
+                case STATE_TEST_W:
+                    alarmScreenTemplate(getStateText(g_vars_ptr->state, true), true, "status: WARNING", "remaining", g_vars_ptr->pin, g_vars_ptr->attempts, (g_config_ptr->alarm_e_countdown_s*1000-g_vars_ptr->time_temp)/1000, g_vars_ptr->time.c_str(), g_vars_ptr->date.c_str(), g_vars_ptr->wifi_strength, g_vars_ptr->gsm_strength, g_vars_ptr->battery_level);
+                    break;
+
+                case STATE_ALARM_E:
+                    alarmScreenTemplate(getStateText(g_vars_ptr->state, true), false, "status: EMERGENCY", "events", g_vars_ptr->pin, g_vars_ptr->attempts, g_vars_ptr->alarm_events, g_vars_ptr->time.c_str(), g_vars_ptr->date.c_str(), g_vars_ptr->wifi_strength, g_vars_ptr->gsm_strength, g_vars_ptr->battery_level);
+                    break;
+
+                case STATE_TEST_E:
+                    alarmScreenTemplate(getStateText(g_vars_ptr->state, true), true, "status: EMERGENCY", "events", g_vars_ptr->pin, g_vars_ptr->attempts, g_vars_ptr->alarm_events, g_vars_ptr->time.c_str(), g_vars_ptr->date.c_str(), g_vars_ptr->wifi_strength, g_vars_ptr->gsm_strength, g_vars_ptr->battery_level);
+                    break;
+
+                case STATE_SETUP_HARD_RESET_ENTER_PIN:
+                case STATE_SETUP_AP_ENTER_PIN:
+                case STATE_SETUP_RFID_ADD_ENTER_PIN:
+                case STATE_SETUP_RFID_DEL_ENTER_PIN:
+                case STATE_ALARM_LOCK_ENTER_PIN:
+                case STATE_TEST_LOCK_ENTER_PIN:
+                case STATE_ALARM_UNLOCK_ENTER_PIN:
+                case STATE_TEST_UNLOCK_ENTER_PIN:
+                case STATE_ALARM_CHANGE_ENTER_PIN1:
+                case STATE_TEST_CHANGE_ENTER_PIN1:
+                case STATE_SETUP_PIN1:
+                    authScreenTemplate(getStateText(g_vars_ptr->state, true), false, "Please, type in PIN code,", "or use RFID card:", g_vars_ptr->pin, g_vars_ptr->attempts, g_vars_ptr->time.c_str(), g_vars_ptr->date.c_str(), g_vars_ptr->wifi_strength, g_vars_ptr->gsm_strength, g_vars_ptr->battery_level);
+                    break;
+
+                case STATE_ALARM_CHANGE_ENTER_PIN2:
+                case STATE_TEST_CHANGE_ENTER_PIN2:
+                case STATE_SETUP_PIN2:
+                    authScreenTemplate(getStateText(g_vars_ptr->state, true), false, "Please, type in new PIN code:", "", g_vars_ptr->pin, g_vars_ptr->attempts, g_vars_ptr->time.c_str(), g_vars_ptr->date.c_str(), g_vars_ptr->wifi_strength, g_vars_ptr->gsm_strength, g_vars_ptr->battery_level);
+                    break;
+
+                case STATE_ALARM_CHANGE_ENTER_PIN3:
+                case STATE_TEST_CHANGE_ENTER_PIN3:
+                case STATE_SETUP_PIN3:
+                    authScreenTemplate(getStateText(g_vars_ptr->state, true), false, "Please, repeat previously", "set PIN code:", g_vars_ptr->pin, g_vars_ptr->attempts, g_vars_ptr->time.c_str(), g_vars_ptr->date.c_str(), g_vars_ptr->wifi_strength, g_vars_ptr->gsm_strength, g_vars_ptr->battery_level);
+                    break;
+
+                default:
+                    // lcd.print("State was not recognised!");
+                    esplogW(TAG_LIB_DISPLAY, "(loadScreen)", "Unrecognised state for loading display data!\n");
+                    break;
+            }
+
+        } while (display.nextPage());
+    }
+
+    else {
+        String data;
+        int x, y;
+
+        if (g_vars_ptr->refresh_display.refresh_selection) {
+            g_vars_ptr->refresh_display.refresh_selection = false;
+
             // selection
             display.setPartialWindow(10, 32, 20, 80);
             display.firstPage();
             do {
                 display.fillScreen(GxEPD_WHITE);
-                updateSelection(getSelectionId(g_vars->state, g_vars->selection));
+                updateSelection(getSelectionId(g_vars_ptr->state, g_vars_ptr->selection));
             } while (display.nextPage());
 
             // special selections for state STATE_SETUP
             // TODO add the selections for zigbee
-            if (g_vars->state == STATE_SETUP) {
+            if (g_vars_ptr->state == STATE_SETUP) {
                 display.setPartialWindow(30, 48, 150, 40);
                 // display.setPartialWindow(30, 72, 150, 16);
                 display.firstPage();
@@ -171,7 +308,7 @@ void updateScreen(g_vars_t * g_vars, g_config_t * g_config, int param) {
                     u8g2Fonts.setFont(u8g2_font_courB10_tr);
 
                     u8g2Fonts.setCursor(36, 65);
-                    switch (g_vars->selection) {
+                    switch (g_vars_ptr->selection) {
                         case SELECTION_SETUP_OPEN_ZB:
                             u8g2Fonts.print("ZIGBEE open");
                             break;
@@ -192,7 +329,7 @@ void updateScreen(g_vars_t * g_vars, g_config_t * g_config, int param) {
 
 
                     u8g2Fonts.setCursor(36, 83);
-                    switch (g_vars->selection) {
+                    switch (g_vars_ptr->selection) {
                         case SELECTION_SETUP_ADD_RFID:
                             u8g2Fonts.print("RFID add");
                             break;
@@ -209,34 +346,39 @@ void updateScreen(g_vars_t * g_vars, g_config_t * g_config, int param) {
                     }
                 } while (display.nextPage());
             }
-            break;
+        }
 
-        case UPDATE_STATUS:
+        if (g_vars_ptr->refresh_display.refresh_status) {
+            g_vars_ptr->refresh_display.refresh_status = false;
+
             // status icons
             display.setPartialWindow(200, 8, 44, 16);
             display.firstPage();
             do {
                 display.fillScreen(GxEPD_WHITE);
-                updateStatusIcons(g_vars->wifi_strength, g_vars->gsm_strength, g_vars->battery_level);
+                updateStatusIcons(g_vars_ptr->wifi_strength, g_vars_ptr->gsm_strength, g_vars_ptr->battery_level);
             } while (display.nextPage());
-            break;
+        }
 
-        case UPDATE_DATETIME:
+        if (g_vars_ptr->refresh_display.refresh_datetime) {
+            g_vars_ptr->refresh_display.refresh_datetime = false;
             // datetime
             display.setPartialWindow(180, 88, 64, 32);
             display.firstPage();
             do {
                 display.fillScreen(GxEPD_WHITE);
-                updateDatetime(g_vars->date.c_str(), g_vars->time.c_str());
+                updateDatetime(g_vars_ptr->date.c_str(), g_vars_ptr->time.c_str());
             } while (display.nextPage());
-            break;
+        }
 
-        case UPDATE_PIN:
+        if (g_vars_ptr->refresh_display.refresh_pin) {
+            g_vars_ptr->refresh_display.refresh_pin = false;
+
             // pin
             display.firstPage();
             do {
                 display.fillScreen(GxEPD_WHITE);
-                switch (g_vars->state) {
+                switch (g_vars_ptr->state) {
                     case STATE_SETUP_HARD_RESET_ENTER_PIN:
                     case STATE_SETUP_AP_ENTER_PIN:
                     case STATE_SETUP_RFID_ADD_ENTER_PIN:
@@ -273,16 +415,18 @@ void updateScreen(g_vars_t * g_vars, g_config_t * g_config, int param) {
                     default:
                         return;
                 }
-                updatePin(g_vars->pin, x, y);
+                updatePin(g_vars_ptr->pin, x, y);
             } while (display.nextPage());
-            break;
+        }
 
-        case UPDATE_ATTEMPTS:
+        if (g_vars_ptr->refresh_display.refresh_attempts) {
+            g_vars_ptr->refresh_display.refresh_attempts = false;
+
             // attempts
             display.firstPage();
             do {
                 display.fillScreen(GxEPD_WHITE);
-                switch (g_vars->state) {
+                switch (g_vars_ptr->state) {
                     case STATE_SETUP_HARD_RESET_ENTER_PIN:
                     case STATE_SETUP_AP_ENTER_PIN:
                     case STATE_SETUP_RFID_ADD_ENTER_PIN:
@@ -319,12 +463,13 @@ void updateScreen(g_vars_t * g_vars, g_config_t * g_config, int param) {
                     default:
                         return;
                 }
-                updateAttempts(g_vars->attempts, x, y);
+                updateAttempts(g_vars_ptr->attempts, x, y);
             } while (display.nextPage());
-            break;
+        }
 
-        case UPDATE_EVENTS:
-        case UPDATE_COUNTDOWN:
+        if (g_vars_ptr->refresh_display.refresh_countdown) {
+            g_vars_ptr->refresh_display.refresh_countdown = false;
+
             // events / countdown
             display.setPartialWindow(20, 32, 140, 16);
             display.firstPage();
@@ -332,29 +477,42 @@ void updateScreen(g_vars_t * g_vars, g_config_t * g_config, int param) {
                 display.fillScreen(GxEPD_WHITE);
                 u8g2Fonts.setFont(u8g2_font_courB10_tr);
                 u8g2Fonts.setCursor(20, 42);
-                if (param == UPDATE_EVENTS) {
-                    data = String(String("events: ") + String(g_vars->alarm_events));
-                } else {
-                    switch (g_vars->state) {
-                        case STATE_ALARM_C:
-                        case STATE_TEST_C:
-                            data = String(String("remaining: ") + String((g_config->alarm_countdown_s*1000-g_vars->time_temp)/1000));
-                            break;
+                switch (g_vars_ptr->state) {
+                    case STATE_ALARM_C:
+                    case STATE_TEST_C:
+                        data = String(String("remaining: ") + String((g_config_ptr->alarm_countdown_s*1000-g_vars_ptr->time_temp)/1000));
+                        break;
 
-                        case STATE_ALARM_W:
-                        case STATE_TEST_W:
-                            data = String(String("remaining: ") + String((g_config->alarm_e_countdown_s*1000-g_vars->time_temp)/1000));
-                            break;
+                    case STATE_ALARM_W:
+                    case STATE_TEST_W:
+                        data = String(String("remaining: ") + String((g_config_ptr->alarm_e_countdown_s*1000-g_vars_ptr->time_temp)/1000));
+                        break;
 
-                        default:
-                            return;
-                    }
+                    default:
+                        return;
                 }
                 u8g2Fonts.print(data);
             } while (display.nextPage());
-            break;
-            
-        case UPDATE_ALARM_STATUS:
+        }
+
+        if (g_vars_ptr->refresh_display.refresh_events) {
+            g_vars_ptr->refresh_display.refresh_events = false;
+
+            // events / countdown
+            display.setPartialWindow(20, 32, 140, 16);
+            display.firstPage();
+            do {
+                display.fillScreen(GxEPD_WHITE);
+                u8g2Fonts.setFont(u8g2_font_courB10_tr);
+                u8g2Fonts.setCursor(20, 42);
+                data = String(String("events: ") + String(g_vars_ptr->alarm_events));
+                u8g2Fonts.print(data);
+            } while (display.nextPage());
+        }
+
+        if (g_vars_ptr->refresh_display.refresh_alarm_status) {
+            g_vars_ptr->refresh_display.refresh_alarm_status = false;
+
             // alarm status
             display.setPartialWindow(20, 56, 140, 16);
             display.firstPage();
@@ -362,7 +520,7 @@ void updateScreen(g_vars_t * g_vars, g_config_t * g_config, int param) {
                 display.fillScreen(GxEPD_WHITE);
                 u8g2Fonts.setFont(u8g2_font_courB10_tr);
                 u8g2Fonts.setCursor(20, 60);
-                switch (g_vars->state) {
+                switch (g_vars_ptr->state) {
                     case STATE_ALARM_OK:
                     case STATE_TEST_OK:
                         data = String("status: OK");
@@ -386,352 +544,191 @@ void updateScreen(g_vars_t * g_vars, g_config_t * g_config, int param) {
                 }
                 u8g2Fonts.print(data);
             } while (display.nextPage());
-            break;
-        
-        default:
-            return;
+        }   
     }
 
     waitReady();
 }
 
-void loadScreen(g_vars_t * g_vars, g_config_t * g_config, bool reboot) {
-
-    if (reboot) {
-        initScreenTemplate("Rebooting...");
-        return;
-    }
-
-    int selection_id = getSelectionId(g_vars->state, g_vars->selection);
-    switch (g_vars->state) {
-        case STATE_INIT:
-            menuScreenTemplate(getStateText(g_vars->state, true), selection_id, false, "setup", "alarm", "test mode", "reboot", g_vars->time.c_str(), g_vars->date.c_str(), g_vars->wifi_strength, g_vars->gsm_strength, g_vars->battery_level);
-            break;
-
-        case STATE_SETUP:
-            menuScreenTemplate(getStateText(g_vars->state, true), selection_id, false, "WiFi setup", "ZIGBEE setup", "RFID setup", "hard reset", g_vars->time.c_str(), g_vars->date.c_str(), g_vars->wifi_strength, g_vars->gsm_strength, g_vars->battery_level);
-            break;
-
-        case STATE_SETUP_AP:
-            initScreenTemplate("WiFi AP is now active...");
-            break;
-
-        case STATE_SETUP_HARD_RESET:
-            initScreenTemplate("Please confirm hard reset...");
-            break;
-
-        case STATE_SETUP_RFID_ADD:
-        case STATE_SETUP_RFID_DEL:
-        case STATE_SETUP_RFID_CHECK:
-            rfidScreenTemplate(getStateText(g_vars->state, true), false, "Please, insert RFID card:", "", g_vars->attempts, g_vars->time.c_str(), g_vars->date.c_str(), g_vars->wifi_strength, g_vars->gsm_strength, g_vars->battery_level);
-            break;
-
-        case STATE_ALARM_IDLE:
-            menuScreenTemplate(getStateText(g_vars->state, true), selection_id, false, "lock", "PIN setup", "reboot", "", g_vars->time.c_str(), g_vars->date.c_str(), g_vars->wifi_strength, g_vars->gsm_strength, g_vars->battery_level);
-            break;
-
-        case STATE_TEST_IDLE:
-            menuScreenTemplate(getStateText(g_vars->state, true), selection_id, true, "lock", "PIN setup", "reboot", "", g_vars->time.c_str(), g_vars->date.c_str(), g_vars->wifi_strength, g_vars->gsm_strength, g_vars->battery_level);
-            break;
-
-        case STATE_ALARM_OK:
-            alarmScreenTemplate(getStateText(g_vars->state, true), false, "status: OK", "events", g_vars->pin.c_str(), g_vars->attempts, g_vars->alarm_events, g_vars->time.c_str(), g_vars->date.c_str(), g_vars->wifi_strength, g_vars->gsm_strength, g_vars->battery_level);
-            break;
-
-        case STATE_TEST_OK:
-            alarmScreenTemplate(getStateText(g_vars->state, true), true, "status: OK", "events", g_vars->pin, g_vars->attempts, g_vars->alarm_events, g_vars->time.c_str(), g_vars->date.c_str(), g_vars->wifi_strength, g_vars->gsm_strength, g_vars->battery_level);
-            break;
-
-        case STATE_ALARM_C:
-            alarmScreenTemplate(getStateText(g_vars->state, true), false, "status: STARTING", "remaining", g_vars->pin, g_vars->attempts, (g_config->alarm_countdown_s*1000-g_vars->time_temp)/1000, g_vars->time.c_str(), g_vars->date.c_str(), g_vars->wifi_strength, g_vars->gsm_strength, g_vars->battery_level);
-            break;
-
-        case STATE_TEST_C:
-            alarmScreenTemplate(getStateText(g_vars->state, true), true, "status: STARTING", "remaining", g_vars->pin, g_vars->attempts, (g_config->alarm_countdown_s*1000-g_vars->time_temp)/1000, g_vars->time.c_str(), g_vars->date.c_str(), g_vars->wifi_strength, g_vars->gsm_strength, g_vars->battery_level);
-            break;
-
-        case STATE_ALARM_W:
-            alarmScreenTemplate(getStateText(g_vars->state, true), false, "status: WARNING", "remaining", g_vars->pin, g_vars->attempts, (g_config->alarm_e_countdown_s*1000-g_vars->time_temp)/1000, g_vars->time.c_str(), g_vars->date.c_str(), g_vars->wifi_strength, g_vars->gsm_strength, g_vars->battery_level);
-            break;
-
-        case STATE_TEST_W:
-            alarmScreenTemplate(getStateText(g_vars->state, true), true, "status: WARNING", "remaining", g_vars->pin, g_vars->attempts, (g_config->alarm_e_countdown_s*1000-g_vars->time_temp)/1000, g_vars->time.c_str(), g_vars->date.c_str(), g_vars->wifi_strength, g_vars->gsm_strength, g_vars->battery_level);
-            break;
-
-        case STATE_ALARM_E:
-            alarmScreenTemplate(getStateText(g_vars->state, true), false, "status: EMERGENCY", "events", g_vars->pin, g_vars->attempts, g_vars->alarm_events, g_vars->time.c_str(), g_vars->date.c_str(), g_vars->wifi_strength, g_vars->gsm_strength, g_vars->battery_level);
-            break;
-
-        case STATE_TEST_E:
-            alarmScreenTemplate(getStateText(g_vars->state, true), true, "status: EMERGENCY", "events", g_vars->pin, g_vars->attempts, g_vars->alarm_events, g_vars->time.c_str(), g_vars->date.c_str(), g_vars->wifi_strength, g_vars->gsm_strength, g_vars->battery_level);
-            break;
-
-        case STATE_SETUP_HARD_RESET_ENTER_PIN:
-        case STATE_SETUP_AP_ENTER_PIN:
-        case STATE_SETUP_RFID_ADD_ENTER_PIN:
-        case STATE_SETUP_RFID_DEL_ENTER_PIN:
-        case STATE_ALARM_LOCK_ENTER_PIN:
-        case STATE_TEST_LOCK_ENTER_PIN:
-        case STATE_ALARM_UNLOCK_ENTER_PIN:
-        case STATE_TEST_UNLOCK_ENTER_PIN:
-        case STATE_ALARM_CHANGE_ENTER_PIN1:
-        case STATE_TEST_CHANGE_ENTER_PIN1:
-        case STATE_SETUP_PIN1:
-            authScreenTemplate(getStateText(g_vars->state, true), false, "Please, type in PIN code,", "or use RFID card:", g_vars->pin, g_vars->attempts, g_vars->time.c_str(), g_vars->date.c_str(), g_vars->wifi_strength, g_vars->gsm_strength, g_vars->battery_level);
-            break;
-
-        case STATE_ALARM_CHANGE_ENTER_PIN2:
-        case STATE_TEST_CHANGE_ENTER_PIN2:
-        case STATE_SETUP_PIN2:
-            authScreenTemplate(getStateText(g_vars->state, true), false, "Please, type in new PIN code:", "", g_vars->pin, g_vars->attempts, g_vars->time.c_str(), g_vars->date.c_str(), g_vars->wifi_strength, g_vars->gsm_strength, g_vars->battery_level);
-            break;
-
-        case STATE_ALARM_CHANGE_ENTER_PIN3:
-        case STATE_TEST_CHANGE_ENTER_PIN3:
-        case STATE_SETUP_PIN3:
-            authScreenTemplate(getStateText(g_vars->state, true), false, "Please, repeat previously", "set PIN code:", g_vars->pin, g_vars->attempts, g_vars->time.c_str(), g_vars->date.c_str(), g_vars->wifi_strength, g_vars->gsm_strength, g_vars->battery_level);
-            break;
-
-        default:
-            // lcd.print("State was not recognised!");
-            esplogW(TAG_LIB_DISPLAY, "(loadScreen)", "Unrecognised state for loading display data!\n");
-            break;
-    }
-
-    waitReady();
-}
+// ---------------------------------------------------------------------------
+// TEMPLATE FUNCTIONS
 
 void menuScreenTemplate(const char * label, int selection_id, bool test, const char * option1, const char * option2, const char * option3, const char * option4, const char * time, const char * date, int wifi, int gsm, int battery) {
-    uint16_t x, y, w, h; 
+    uint16_t x, y, w, h;
     int16_t tx, ty, tw, th;
 
-    disable_update = false;
+    // main label
+    u8g2Fonts.setFont(u8g2_font_courB14_tr);
+    u8g2Fonts.setCursor(7, 18);
+    u8g2Fonts.print(label);
+    display.drawFastHLine(5, 25, display.width() - 10, GxEPD_BLACK);
 
-    display.setPartialWindow(0, 0, display.width(), display.height());
-    display.firstPage();
-    do {
-        display.fillScreen(GxEPD_WHITE);
+    // options
+    u8g2Fonts.setFont(u8g2_font_courB10_tr);
+    u8g2Fonts.setCursor(36, 47);
+    u8g2Fonts.print(option1);
+    u8g2Fonts.setCursor(36, 65);
+    u8g2Fonts.print(option2);
+    u8g2Fonts.setCursor(36, 83);
+    u8g2Fonts.print(option3);
+    u8g2Fonts.setCursor(36, 101);
+    u8g2Fonts.print(option4);
 
-        // display border rectangle
-        display.drawRect(0, 0, display.width(), display.height()-6, GxEPD_BLACK); // <- my screen has obviously different height than class expects
+    // testing mode label
+    if (test) {
+        u8g2Fonts.setFont(u8g2_font_courB08_tr);
+        u8g2Fonts.setCursor(163, 36);
+        u8g2Fonts.print("(testing mode)");   
+    }
 
-        // main label
-        u8g2Fonts.setFont(u8g2_font_courB14_tr);
-        u8g2Fonts.setCursor(7, 18);
-        u8g2Fonts.print(label);
-        display.drawFastHLine(5, 25, display.width() - 10, GxEPD_BLACK);
+    // date & time
+    updateDatetime(date, time);
 
-        // options
-        u8g2Fonts.setFont(u8g2_font_courB10_tr);
-        u8g2Fonts.setCursor(36, 47);
-        u8g2Fonts.print(option1);
-        u8g2Fonts.setCursor(36, 65);
-        u8g2Fonts.print(option2);
-        u8g2Fonts.setCursor(36, 83);
-        u8g2Fonts.print(option3);
-        u8g2Fonts.setCursor(36, 101);
-        u8g2Fonts.print(option4);
+    // selection
+    updateSelection(selection_id);
 
-        // testing mode label
-        if (test) {
-            u8g2Fonts.setFont(u8g2_font_courB08_tr);
-            u8g2Fonts.setCursor(163, 36);
-            u8g2Fonts.print("(testing mode)");   
-        }
-
-        // date & time
-        updateDatetime(date, time);
-
-        // selection
-        updateSelection(selection_id);
-
-        // status icons
-        updateStatusIcons(wifi, gsm, battery);
-
-    } while (display.nextPage());
+    // status icons
+    updateStatusIcons(wifi, gsm, battery);
 }
 
 void rfidScreenTemplate(const char * label, bool test, const char * instructions1, const char * instructions2, int attempts, const char * time, const char * date, int wifi, int gsm, int battery) {
     uint16_t x, y, w, h; 
     int16_t tx, ty, tw, th;
 
-    disable_update = false;
+    // main label
+    u8g2Fonts.setFont(u8g2_font_courB14_tr);
+    u8g2Fonts.setCursor(5, 18);
+    u8g2Fonts.print(label);
+    display.drawFastHLine(5, 25, display.width() - 10, GxEPD_BLACK);
 
-    display.setPartialWindow(0, 0, display.width(), display.height());
-    display.firstPage();
-    do {
-        display.fillScreen(GxEPD_WHITE);
+    // instructions
+    u8g2Fonts.setFont(u8g2_font_courB08_tr);
+    u8g2Fonts.setCursor(7, 36);
+    u8g2Fonts.print(instructions1);
+    u8g2Fonts.setFont(u8g2_font_courB08_tr);
+    u8g2Fonts.setCursor(7, 48);
+    u8g2Fonts.print(instructions2);
 
-        // display border rectangle
-        display.drawRect(0, 0, display.width(), display.height()-6, GxEPD_BLACK); // <- my screen has obviously different height than class expects
-
-        // main label
-        u8g2Fonts.setFont(u8g2_font_courB14_tr);
-        u8g2Fonts.setCursor(5, 18);
-        u8g2Fonts.print(label);
-        display.drawFastHLine(5, 25, display.width() - 10, GxEPD_BLACK);
-
-        // instructions
+    // attempts
+    u8g2Fonts.setFont(u8g2_font_courB10_tr);
+    u8g2Fonts.setCursor(20, 102);
+    u8g2Fonts.printf("attempts: %d", attempts);
+    
+    // testing mode label
+    if (test) {
         u8g2Fonts.setFont(u8g2_font_courB08_tr);
-        u8g2Fonts.setCursor(7, 36);
-        u8g2Fonts.print(instructions1);
-        u8g2Fonts.setFont(u8g2_font_courB08_tr);
-        u8g2Fonts.setCursor(7, 48);
-        u8g2Fonts.print(instructions2);
+        u8g2Fonts.setCursor(163, 36);
+        u8g2Fonts.print("(testing mode)");
+    }
 
-        // attempts
-        u8g2Fonts.setFont(u8g2_font_courB10_tr);
-        u8g2Fonts.setCursor(20, 102);
-        u8g2Fonts.printf("attempts: %d", attempts);
-        
-        // testing mode label
-        if (test) {
-            u8g2Fonts.setFont(u8g2_font_courB08_tr);
-            u8g2Fonts.setCursor(163, 36);
-            u8g2Fonts.print("(testing mode)");
-        }
+    // date & time
+    updateDatetime(date, time);
 
-        // date & time
-        updateDatetime(date, time);
-
-        // status icons
-        updateStatusIcons(wifi, gsm, battery);
-
-    } while (display.nextPage());
+    // status icons
+    updateStatusIcons(wifi, gsm, battery);
 }
 
 void authScreenTemplate(const char * label, bool test, const char * instructions1, const char * instructions2, String pin, int attempts, const char * time, const char * date, int wifi, int gsm, int battery) {
     uint16_t x, y, w, h; 
     int16_t tx, ty, tw, th;
 
-    disable_update = false;
+    // main label
+    u8g2Fonts.setFont(u8g2_font_courB14_tr);
+    u8g2Fonts.setCursor(5, 18);
+    u8g2Fonts.print(label);
+    display.drawFastHLine(5, 25, display.width() - 10, GxEPD_BLACK);
 
-    display.setPartialWindow(0, 0, display.width(), display.height());
-    display.firstPage();
-    do {
-        display.fillScreen(GxEPD_WHITE);
-
-        // display border rectangle
-        display.drawRect(0, 0, display.width(), display.height()-6, GxEPD_BLACK); // <- my screen has obviously different height than class expects
-
-        // main label
-        u8g2Fonts.setFont(u8g2_font_courB14_tr);
-        u8g2Fonts.setCursor(5, 18);
-        u8g2Fonts.print(label);
-        display.drawFastHLine(5, 25, display.width() - 10, GxEPD_BLACK);
-
-        // instructions
+    // instructions
+    u8g2Fonts.setFont(u8g2_font_courB08_tr);
+    u8g2Fonts.setCursor(7, 36);
+    u8g2Fonts.print(instructions1);
+    u8g2Fonts.setFont(u8g2_font_courB08_tr);
+    u8g2Fonts.setCursor(7, 48);
+    u8g2Fonts.print(instructions2);
+    
+    // testing mode label
+    if (test) {
         u8g2Fonts.setFont(u8g2_font_courB08_tr);
-        u8g2Fonts.setCursor(7, 36);
-        u8g2Fonts.print(instructions1);
-        u8g2Fonts.setFont(u8g2_font_courB08_tr);
-        u8g2Fonts.setCursor(7, 48);
-        u8g2Fonts.print(instructions2);
-        
-        // testing mode label
-        if (test) {
-            u8g2Fonts.setFont(u8g2_font_courB08_tr);
-            u8g2Fonts.setCursor(163, 36);
-            u8g2Fonts.print("(testing mode)");
-        }
+        u8g2Fonts.setCursor(163, 36);
+        u8g2Fonts.print("(testing mode)");
+    }
 
-        // pin
-        updatePin(pin, 20, 82);
+    // pin
+    updatePin(pin, 20, 82);
 
-        // attempts
-        updateAttempts(attempts, 20, 102);
+    // attempts
+    updateAttempts(attempts, 20, 102);
 
-        // date & time
-        updateDatetime(date, time);
+    // date & time
+    updateDatetime(date, time);
 
-        // status icons
-        updateStatusIcons(wifi, gsm, battery);
-
-    } while (display.nextPage());
+    // status icons
+    updateStatusIcons(wifi, gsm, battery);
 }
 
 void alarmScreenTemplate(const char * label, bool test, const char * status, const char * data, String pin, int attempts, int data_load, const char * time, const char * date, int wifi, int gsm, int battery) {
     uint16_t x, y, w, h; 
     int16_t tx, ty, tw, th;
 
-    disable_update = false;
+    // main label
+    u8g2Fonts.setFont(u8g2_font_courB14_tr);
+    u8g2Fonts.setCursor(7, 18);
+    u8g2Fonts.print(label);
+    display.drawFastHLine(5, 25, display.width() - 10, GxEPD_BLACK);
 
-    display.setPartialWindow(0, 0, display.width(), display.height());
-    display.firstPage();
-    do {
-        display.fillScreen(GxEPD_WHITE);
+    // data (events / countdown)
+    u8g2Fonts.setFont(u8g2_font_courB10_tr);
+    u8g2Fonts.setCursor(20, 42);
+    u8g2Fonts.printf("%s: %d", data, data_load);
+    u8g2Fonts.setCursor(20, 60);
+    u8g2Fonts.print(status);
 
-        // display border rectangle
-        display.drawRect(0, 0, display.width(), display.height()-6, GxEPD_BLACK); // <- my screen has obviously different height than class expects
+    // testing mode label
+    if (test) {
+        u8g2Fonts.setFont(u8g2_font_courB08_tr);
+        u8g2Fonts.setCursor(163, 36);
+        u8g2Fonts.print("(testing mode)");   
+    }
 
-        // main label
-        u8g2Fonts.setFont(u8g2_font_courB14_tr);
-        u8g2Fonts.setCursor(7, 18);
-        u8g2Fonts.print(label);
-        display.drawFastHLine(5, 25, display.width() - 10, GxEPD_BLACK);
+    // attempts
+    updateAttempts(attempts, 20, 112);
 
-        // data (events / countdown)
-        u8g2Fonts.setFont(u8g2_font_courB10_tr);
-        u8g2Fonts.setCursor(20, 42);
-        u8g2Fonts.printf("%s: %d", data, data_load);
-        u8g2Fonts.setCursor(20, 60);
-        u8g2Fonts.print(status);
+    // pin
+    updatePin(pin, 20, 94);
 
-        // testing mode label
-        if (test) {
-            u8g2Fonts.setFont(u8g2_font_courB08_tr);
-            u8g2Fonts.setCursor(163, 36);
-            u8g2Fonts.print("(testing mode)");   
-        }
+    // date & time
+    updateDatetime(date, time);
 
-        // attempts
-        updateAttempts(attempts, 20, 112);
-
-        // pin
-        updatePin(pin, 20, 94);
-
-        // date & time
-        updateDatetime(date, time);
-
-        // status icons
-        updateStatusIcons(wifi, gsm, battery);
-
-    } while (display.nextPage());
+    // status icons
+    updateStatusIcons(wifi, gsm, battery);
 }
 
 void initScreenTemplate(const char * label) {
     uint16_t x, y, w, h;
     int16_t tx, ty, tw, th;
 
-    disable_update = true;
+    u8g2Fonts.setFont(u8g2_font_maniac_tr);
+    tw = u8g2Fonts.getUTF8Width("IoT Alarm");
+    th = (u8g2Fonts.getFontAscent() - u8g2Fonts.getFontDescent());
+    tx = (display.width() - tw)/2;
+    ty = 40;
+    u8g2Fonts.setCursor(tx, ty);
+    u8g2Fonts.println("IoT Alarm");
 
-    display.setPartialWindow(0, 0, display.width(), display.height());
-    do {
-        display.fillScreen(GxEPD_WHITE);
-        u8g2Fonts.setFont(u8g2_font_maniac_tr);
-        tw = u8g2Fonts.getUTF8Width("IoT Alarm");
-        th = (u8g2Fonts.getFontAscent() - u8g2Fonts.getFontDescent());
-        tx = (display.width() - tw)/2;
-        ty = 40;
-        u8g2Fonts.setCursor(tx, ty);
-        u8g2Fonts.println("IoT Alarm");
+    u8g2Fonts.setFont(u8g2_font_courB10_tr);
+    tw = u8g2Fonts.getUTF8Width("version 1.0");
+    th = (u8g2Fonts.getFontAscent() - u8g2Fonts.getFontDescent());
+    tx = (display.width() - tw)/2;
+    ty = 60;
+    u8g2Fonts.setCursor(tx, ty);
+    u8g2Fonts.println("version 1.0");
 
-        u8g2Fonts.setFont(u8g2_font_courB10_tr);
-        tw = u8g2Fonts.getUTF8Width("version 1.0");
-        th = (u8g2Fonts.getFontAscent() - u8g2Fonts.getFontDescent());
-        tx = (display.width() - tw)/2;
-        ty = 60;
-        u8g2Fonts.setCursor(tx, ty);
-        u8g2Fonts.println("version 1.0");
-
-        tw = u8g2Fonts.getUTF8Width(label);
-        th = (u8g2Fonts.getFontAscent() - u8g2Fonts.getFontDescent());
-        tx = (display.width() - tw)/2;
-        ty = 105;
-        u8g2Fonts.setCursor(tx, ty);
-        u8g2Fonts.println(label);
-
-    } while (display.nextPage());
+    tw = u8g2Fonts.getUTF8Width(label);
+    th = (u8g2Fonts.getFontAscent() - u8g2Fonts.getFontDescent());
+    tx = (display.width() - tw)/2;
+    ty = 105;
+    u8g2Fonts.setCursor(tx, ty);
+    u8g2Fonts.println(label);
 }
 
 void notificationScreenTemplate(const char * label, const char * data) {
@@ -778,9 +775,10 @@ void notificationScreenTemplate(const char * label, const char * data) {
         u8g2Fonts.print(data);
         // todo bitmaps
     } while (display.nextPage());
-
-    disable_update = true;
 }
+
+// ---------------------------------------------------------------------------
+// UPDATE FUNCTIONS
 
 void updateSelection(int selection_id) {
     u8g2Fonts.setFont(u8g2_font_courB10_tr);
@@ -911,6 +909,9 @@ void updateStatusIcons(int wifi, int gsm, int battery) {
         u8g2Fonts.print("\ue258");
     }
 }
+
+// ---------------------------------------------------------------------------
+// HELPER FUNCTIONS
 
 int getSelectionId(States state, int selection) {
     switch (state) {

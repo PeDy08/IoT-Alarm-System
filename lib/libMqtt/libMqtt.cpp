@@ -4,6 +4,10 @@ WiFiClient mqttwificlient;
 WiFiClientSecure mqttwificlientsecure;
 PubSubClient mqtt;
 
+extern g_vars_t * g_vars_ptr;
+extern g_config_t * g_config_ptr;
+extern QueueHandle_t mqttQueue;
+
 void mqtt_callback(char* topic, byte* message, unsigned int length) {
     String mqtt_topic = String(topic);
     String mqtt_load;
@@ -11,8 +15,8 @@ void mqtt_callback(char* topic, byte* message, unsigned int length) {
         mqtt_load += (char)message[i];
     }
 
-    String write_prefix = g_config.mqtt_topic + String("/write/in");
-    String read_prefix  = g_config.mqtt_topic + String("/read/in");
+    String write_prefix = g_config_ptr->mqtt_topic + String("/write/in");
+    String read_prefix  = g_config_ptr->mqtt_topic + String("/read/in");
 
     if (mqtt_topic.startsWith(write_prefix)) {
         esplogI(TAG_LIB_MQTT, "(mqtt_callback)", "MQTT write command received! (topic: %s, load: %s)", mqtt_topic.c_str(), mqtt_load.c_str());

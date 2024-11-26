@@ -15,6 +15,15 @@
 
 #include "utils.h"
 
+#ifdef EINK
+#include "libDisplayEINK.h"
+#endif
+
+#ifdef LCD
+#include "libDisplayLCD.h"
+extern LiquidCrystal_I2C display;
+#endif
+
 #define LOCK_FILE_NAME "passwords.txt"
 #define LOCK_FILE_PATH "/auth/"
 #define LOCK_FILE String(String(LOCK_FILE_PATH)+String(LOCK_FILE_NAME)).c_str()

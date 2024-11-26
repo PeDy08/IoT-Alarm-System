@@ -41,10 +41,6 @@
 
 extern HardwareSerial SerialZigbee;
 
-extern TaskHandle_t handleTaskZigbee;
-extern g_vars_t g_vars;
-extern g_config_t g_config;
-
 extern const int RX_BUF_SIZE;
 extern const int TX_BUF_SIZE;
 

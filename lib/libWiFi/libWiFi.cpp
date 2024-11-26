@@ -2,6 +2,9 @@
 
 AsyncWebServer server(80);
 
+extern g_config_t * g_vars_ptr;
+extern g_config_t * g_config_ptr;
+
 void startWifiSetupMode() {
     WiFi.mode(WIFI_AP);
     WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PSWD);
@@ -20,7 +23,7 @@ void startWifiSetupMode() {
 
     server.on("/", HTTP_POST, [](AsyncWebServerRequest *request) {
         int params = request->params();
-        g_config_t c = g_config; // so it updates only edited forms, empty forms will be saved from current configuration
+        g_config_t c = *g_config_ptr; // so it updates only edited forms, empty forms will be saved from current configuration
         for (int i = 0; i < params; i++) {
             const AsyncWebParameter * p = request->getParam(i);
             if (p->isPost()) {
@@ -54,7 +57,7 @@ void startWifiSetupMode() {
             request->send(200, "text/plain", "Configuration saved successfully!\nESP will now restart.");
         }
 
-        loadScreen(NULL, NULL, true);
+        displayRestart();
         delay(3000);
         ESP.restart();
     });

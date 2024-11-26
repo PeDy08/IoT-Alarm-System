@@ -24,6 +24,7 @@
 
 #ifdef LCD
 #include "libDisplayLCD.h"
+extern LiquidCrystal_I2C display;
 #endif
 
 #define IIC_SDA 21
@@ -33,11 +34,11 @@
 #define SPI_CLK 17
 #define SD_CS_PIN 2
 
-extern g_config_t g_config;
-extern g_vars_t g_vars;
-
 extern WiFiUDP ntpUDP;
 extern NTPClient timeClient;
+
+extern g_vars_t g_vars;
+extern g_config_t g_config;
 
 void setup();
 void loop();
@@ -131,5 +132,5 @@ inline void setState(States state = STATE_MAX, int selection = -1, int selection
     g_vars.attempts = attempts;
   }
 
-  loadScreen(&g_vars, &g_config);
+  g_vars.refresh_display.refresh = true;
 }
