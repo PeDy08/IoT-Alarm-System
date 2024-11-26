@@ -16,6 +16,7 @@
 #include "libAuth.h"
 #include "libGsm.h"
 #include "libZigbee.h"
+#include "libMqtt.h"
 
 #ifdef EINK
 #include "libDisplayEINK.h"
@@ -42,38 +43,44 @@ void setup();
 void loop();
 
 // WORKING TASKS
-TaskHandle_t handleTaskMenu = NULL;
+extern TaskHandle_t handleTaskMenu;
 void rtosMenu(void* parameters);
 
-TaskHandle_t handleTaskAlarm = NULL;
+extern TaskHandle_t handleTaskAlarm;
 void rtosAlarm(void* testmode);
 
-TaskHandle_t handleTaskKeypad = NULL;
+extern TaskHandle_t handleTaskKeypad;
 void rtosKeypad(void* parameters);
 
-TaskHandle_t handleTaskNet = NULL;
+extern TaskHandle_t handleTaskNet;
 void rtosNet(void* parameters);
 
-TaskHandle_t handleTaskDatetime = NULL;
+extern TaskHandle_t handleTaskDatetime;
 void rtosDatetime(void* parameters);
 
-TaskHandle_t handleTaskSetup = NULL;
-void rtosSetup(void* parameters);
+extern TaskHandle_t handleTaskSetup;
+void rtosWifiSetup(void* parameters);
 
-TaskHandle_t handleTaskRfid = NULL;
+extern TaskHandle_t handleTaskRfid;
 void rtosRfid(void* parameters);
 
-TaskHandle_t handleTaskGsm = NULL;
+extern TaskHandle_t handleTaskDisplay;
+void rtosDisplay(void* parameters);
+
+extern TaskHandle_t handleTaskGsm;
 void rtosGsm(void* parameters);
 
-TaskHandle_t handleTaskZigbee = NULL;
+extern TaskHandle_t handleTaskZigbee;
 void rtosZigbee(void* parameters);
 
+extern TaskHandle_t handleTaskMqtt;
+void rtosMqtt(void* parameters);
+
 // REFRESH TASKS
-TaskHandle_t handleTaskMenuRefresh = NULL;
+extern TaskHandle_t handleTaskMenuRefresh;
 void rtosMenuRefresh(void* parameters);
 
-TaskHandle_t handleTaskRfidRefresh = NULL;
+extern TaskHandle_t handleTaskRfidRefresh;
 void rtosRfidRefresh(void* parameters);
 
 /**

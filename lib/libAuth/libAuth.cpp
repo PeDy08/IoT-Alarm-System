@@ -3,7 +3,7 @@
 MFRC522 mfrc522(RFID_CS_PIN, RFID_RST_PIN);
 
 String hashPassword(String &inputPassword) {
-    esplogI(" (libHash): Hashing password...\n");
+    esplogI(TAG_LIB_AUTH, "(hashPassword)", "Hashing password...");
     inputPassword.trim();
     uint8_t hash[32]; // SHA-256 produces a 32-byte hash
     mbedtls_sha256_context ctx;
@@ -23,16 +23,16 @@ String hashPassword(String &inputPassword) {
 }
 
 bool checkPassword(String &inputPassword) {
-    esplogI(" (libHash): Checking password...\n");
+    esplogI(TAG_LIB_AUTH, "(checkPassword)", "Checking password...");
     inputPassword.trim();
     if (!SD.exists(LOCK_FILE)) {
-        esplogW(" (libHash): Password file doesn't exist!\n");
+        esplogW(TAG_LIB_AUTH, "(checkPassword)", "Password file doesn't exist!");
         return false;
     }
 
     File passwordFile = SD.open(LOCK_FILE, "r");
     if (!passwordFile) {
-        esplogE(" (libJson): Failed to open password file: '%s'! Unexpected error!\n", LOCK_FILE);
+        esplogE(TAG_LIB_AUTH, "(checkPassword)", "Failed to open password file: '%s'! Unexpected error!", LOCK_FILE);
         return false;
     }
 
@@ -45,7 +45,7 @@ bool checkPassword(String &inputPassword) {
     int storedPasswordLength = passwordFile.readStringUntil('\n').toInt();
 
     if (actualPassword.length() != storedPasswordLength) {
-        esplogI(" (libHash): Incorrect password! Password length mismatch!\n");
+        esplogI(TAG_LIB_AUTH, "(checkPassword)", "Incorrect password! Password length mismatch!");
         passwordFile.close();
         return false;
     }
@@ -61,28 +61,28 @@ bool checkPassword(String &inputPassword) {
     passwordFile.close();
     
     if (hashedPassword == storedHashedPassword) {
-        esplogI(" (libHash): Password is correct.\n");
+        esplogI(TAG_LIB_AUTH, "(checkPassword)", "Password is correct.");
         return true;
     } else {
-        esplogI(" (libHash): Incorrect password!\n");
+        esplogI(TAG_LIB_AUTH, "(checkPassword)", "Incorrect password!");
         return false;
     }
 }
 
 bool savePassword(String &inputPassword) {
-    esplogI(" (libHash): Saving password to file...\n");
+    esplogI(TAG_LIB_AUTH, "(savePassword)", "Saving password to file...");
     inputPassword.trim();
     if (SD.exists(LOCK_FILE)) {
-        esplogW(" (libHash): Password file found, rewriting!\n");
+        esplogW(TAG_LIB_AUTH, "(savePassword)", "Password file found, rewriting!");
         if (!SD.remove(LOCK_FILE)) {
-            esplogE(" (libHash): Failed to rewrite existing file: %s!\n", LOCK_FILE);
+            esplogE(TAG_LIB_AUTH, "(savePassword)", "Failed to rewrite existing file: %s!", LOCK_FILE);
             return false;
         }
     }
 
     File passwordFile = SD.open(LOCK_FILE, "w");
     if (!passwordFile) {
-        esplogE(" (libHash): Failed to open password file: %s when writing! Unexpected error!\n", LOCK_FILE);
+        esplogE(TAG_LIB_AUTH, "(savePassword)", "Failed to open password file: %s when writing! Unexpected error!", LOCK_FILE);
         return false;
     }
 
@@ -94,7 +94,7 @@ bool savePassword(String &inputPassword) {
     }
 
     if (actualPassword.length() < MIN_PASSWORD_LENGTH || actualPassword.length() > MAX_PASSWORD_LENGTH) {
-        esplogW(" (libHash): Failed to save new password! Password was too short or too long!\n");
+        esplogW(TAG_LIB_AUTH, "(savePassword)", "Failed to save new password! Password was too short or too long!");
         passwordFile.close();
         return false;
     }
@@ -108,12 +108,12 @@ bool savePassword(String &inputPassword) {
 }
 
 bool saveNewPassword(String &inputDoublePassword) {
-    esplogI(" (libHash): Saving new password to file...\n");
+    esplogI(TAG_LIB_AUTH, "(saveNewPassword)", "Saving new password to file...");
     inputDoublePassword.trim();
     if (SD.exists(LOCK_FILE)) {
-        esplogW(" (libHash): Password file found, rewriting!\n");
+        esplogW(TAG_LIB_AUTH, "(saveNewPassword)", "Password file found, rewriting!");
         if (!SD.remove(LOCK_FILE)) {
-            esplogE(" (libHash): Failed to rewrite existing file: %s!\n", LOCK_FILE);
+            esplogE(TAG_LIB_AUTH, "(saveNewPassword)", "Failed to rewrite existing file: %s!", LOCK_FILE);
             return false;
         }
     }
@@ -122,7 +122,7 @@ bool saveNewPassword(String &inputDoublePassword) {
     int secondDelimiterPos = inputDoublePassword.lastIndexOf('#');
 
     if (firstDelimiterPos == -1 || secondDelimiterPos == -1 || firstDelimiterPos == secondDelimiterPos) {
-        esplogW(" (libHash): Failed to save new password! Password string parsing error! Unexpected string format: %s", inputDoublePassword);
+        esplogW(TAG_LIB_AUTH, "(saveNewPassword)", "Failed to save new password! Password string parsing error! Unexpected string format: %s", inputDoublePassword);
         return false;
     }
 
@@ -130,18 +130,18 @@ bool saveNewPassword(String &inputDoublePassword) {
     String secondPassword = inputDoublePassword.substring(firstDelimiterPos+1, secondDelimiterPos);
     
     if (firstPassword != secondPassword) {
-        esplogW(" (libHash): Failed to save new password! Different passwords were written on setup!\n - first:  %s\n - second: %s\n", firstPassword, secondPassword);
+        esplogW(TAG_LIB_AUTH, "(saveNewPassword)", "Failed to save new password! Different passwords were written on setup!\n - first:  %s\n - second: %s", firstPassword, secondPassword);
         return false;
     }
 
     if (firstPassword.length() < MIN_PASSWORD_LENGTH || firstPassword.length() > MAX_PASSWORD_LENGTH) {
-        esplogW(" (libHash): Failed to save new password! Password was too short or too long!\n");
+        esplogW(TAG_LIB_AUTH, "(saveNewPassword)", "Failed to save new password! Password was too short or too long!");
         return false;
     }
 
     File passwordFile = SD.open(LOCK_FILE, "w");
     if (!passwordFile) {
-        esplogE(" (libHash): Failed to open password file: %s when writing! Unexpected error!\n", LOCK_FILE);
+        esplogE(TAG_LIB_AUTH, "(saveNewPassword)", "Failed to open password file: %s when writing! Unexpected error!", LOCK_FILE);
         return false;
     }
 
@@ -154,20 +154,20 @@ bool saveNewPassword(String &inputDoublePassword) {
 }
 
 bool existsPassword() {
-    esplogI(" (libHash): Checking if password exists... %d\n", SD.exists(LOCK_FILE));
+    esplogI(TAG_LIB_AUTH, "(existsPassword)", "Checking if password exists... %d", SD.exists(LOCK_FILE));
     return SD.exists(LOCK_FILE);
 }
 
 int lengthPassword() {
-    esplogI(" (libHash): Computing password length...\n");
+    esplogI(TAG_LIB_AUTH, "(lengthPassword)", "Computing password length...");
     if (!SD.exists(LOCK_FILE)) {
-        esplogW(" (libHash): Password file doesn't exist!\n");
+        esplogW(TAG_LIB_AUTH, "(lengthPassword)", "Password file doesn't exist!");
         return 0;
     }
 
     File passwordFile = SD.open(LOCK_FILE, "r");
     if (!passwordFile) {
-        esplogE(" (libJson): Failed to open password file: '%s'! Unexpected error!\n", LOCK_FILE);
+        esplogE(TAG_LIB_AUTH, "(lengthPassword)", "Failed to open password file: '%s'! Unexpected error!", LOCK_FILE);
         return -1;
     }
 
@@ -178,19 +178,19 @@ int lengthPassword() {
 
 // ******************************** RFID ********************************
 bool saveRfid(String &inputRfid) {
-    esplogI(" (libHash): Saving rfid to file...\n");
+    esplogI(TAG_LIB_AUTH, "(saveRfid)", "Saving rfid to file...");
     inputRfid.trim();
     if (SD.exists(RFID_FILE)) {
-        esplogW(" (libHash): RFID file found, rewriting!\n");
+        esplogW(TAG_LIB_AUTH, "(saveRfid)", "RFID file found, rewriting!");
         if (!SD.remove(RFID_FILE)) {
-            esplogE(" (libHash): Failed to rewrite existing file: %s!\n", RFID_FILE);
+            esplogE(TAG_LIB_AUTH, "(saveRfid)", "Failed to rewrite existing file: %s!", RFID_FILE);
             return false;
         }
     }
 
     File rfidFile = SD.open(RFID_FILE, "w");
     if (!rfidFile) {
-        esplogE(" (libHash): Failed to open RFID file: %s! Unexpected error!\n", RFID_FILE);
+        esplogE(TAG_LIB_AUTH, "(saveRfid)", "Failed to open RFID file: %s! Unexpected error!", RFID_FILE);
         return false;
     }
 
@@ -202,7 +202,7 @@ bool saveRfid(String &inputRfid) {
 }
 
 bool addRfid(String &inputRfid) {
-    esplogI(" (libHash): Adding new rfid record to RFID file...\n");
+    esplogI(TAG_LIB_AUTH, "(addRfid)", "Adding new rfid record to RFID file...");
     inputRfid.trim();
 
     File rfidFile = SD.open(RFID_FILE, "r");
@@ -212,7 +212,7 @@ bool addRfid(String &inputRfid) {
         line.trim();
         
         if (line == inputRfid) {
-            esplogI(" (libHash): Found matching RFID record: %s\n", inputRfid.c_str());
+            esplogI(TAG_LIB_AUTH, "(addRfid)", "Found matching RFID record: %s", inputRfid.c_str());
             recordFound = true;
             break;
         }
@@ -220,20 +220,20 @@ bool addRfid(String &inputRfid) {
 
     rfidFile.close();
     if (recordFound) {
-        esplogW(" (libHash): RFID UID already added: %s! Ignoring...\n", inputRfid);
+        esplogW(TAG_LIB_AUTH, "(addRfid)", "RFID UID already added: %s! Ignoring...", inputRfid);
         return true;
     }
 
     if (!SD.exists(RFID_FILE)) {
-        esplogW(" (libHash): RFID file not found! Creating new file!\n");
+        esplogW(TAG_LIB_AUTH, "(addRfid)", "RFID file not found! Creating new file!");
         rfidFile = SD.open(RFID_FILE, "w");
     } else {
-        esplogW(" (libHash): RFID file found! Appending record to existing file!\n");
+        esplogW(TAG_LIB_AUTH, "(addRfid)", "RFID file found! Appending record to existing file!");
         rfidFile = SD.open(RFID_FILE, "a");
     }
 
     if (!rfidFile) {
-        esplogE(" (libHash): Failed to open RFID file: %s! Unexpected error!\n", RFID_FILE);
+        esplogE(TAG_LIB_AUTH, "(addRfid)", "Failed to open RFID file: %s! Unexpected error!", RFID_FILE);
         return false;
     }
 
@@ -245,22 +245,22 @@ bool addRfid(String &inputRfid) {
 }
 
 bool delRfid(String &inputRfid) {
-    esplogI(" (libHash): Deleting rfid record from file...\n");
+    esplogI(TAG_LIB_AUTH, "(delRfid)", "Deleting rfid record from file...");
     inputRfid.trim();
     if (!SD.exists(RFID_FILE)) {
-        esplogW(" (libHash): RFID file not found!\n");
+        esplogW(TAG_LIB_AUTH, "(delRfid)", "RFID file not found!");
         return false;
     }
 
     File rfidFile = SD.open(RFID_FILE, "r");
     if (!rfidFile) {
-        esplogE(" (libHash): Failed to open RFID file: %s! Unexpected error!\n", RFID_FILE);
+        esplogE(TAG_LIB_AUTH, "(delRfid)", "Failed to open RFID file: %s! Unexpected error!", RFID_FILE);
         return false;
     }
 
     File tempFile = SD.open(RFID_TMP_FILE, "w");
     if (!tempFile) {
-        esplogE(" (libHash): Failed to create temporary file: %s! Unexpected error!\n", RFID_TMP_FILE);
+        esplogE(TAG_LIB_AUTH, "(delRfid)", "Failed to create temporary file: %s! Unexpected error!", RFID_TMP_FILE);
         rfidFile.close();
         return false;
     }
@@ -271,7 +271,7 @@ bool delRfid(String &inputRfid) {
         line.trim();
 
         if (line == inputRfid) {
-            esplogI(" (libHash): Found RFID record: %s. Deleting...\n", inputRfid.c_str());
+            esplogI(TAG_LIB_AUTH, "(delRfid)", "Found RFID record: %s. Deleting...", inputRfid.c_str());
             recordFound = true;
         } else {
             tempFile.println(line);
@@ -282,41 +282,41 @@ bool delRfid(String &inputRfid) {
     tempFile.close();
 
     if (!recordFound) {
-        esplogW(" (libHash): RFID record not found!\n");
+        esplogW(TAG_LIB_AUTH, "(delRfid)", "RFID record not found!");
         SD.remove(RFID_TMP_FILE);
         return false;
     }
 
     if (!SD.remove(RFID_FILE)) {
-        esplogE(" (libHash): Failed to delete the original RFID file!\n");
+        esplogE(TAG_LIB_AUTH, "(delRfid)", "Failed to delete the original RFID file!");
         return false;
     }
 
     if (!SD.rename(RFID_TMP_FILE, RFID_FILE)) {
-        esplogE(" (libHash): Failed to rename temporary file to RFID file!\n");
+        esplogE(TAG_LIB_AUTH, "(delRfid)", "Failed to rename temporary file to RFID file!");
         return false;
     }
 
-    esplogI(" (libHash): Successfully deleted RFID record and updated the file.\n");
+    esplogI(TAG_LIB_AUTH, "(delRfid)", "Successfully deleted RFID record and updated the file.");
     return true;
 }
 
 bool existsRfid() {
-    esplogI(" (libHash): Checking if rfid file exists... %d\n", SD.exists(RFID_FILE));
+    esplogI(TAG_LIB_AUTH, "(existsRfid)", "Checking if rfid file exists... %d", SD.exists(RFID_FILE));
     return SD.exists(RFID_FILE);
 }
 
 bool checkRfid(String &inputRfid) {
-    esplogI(" (libHash): Checking rfid...\n");
+    esplogI(TAG_LIB_AUTH, "(checkRfid)", "Checking rfid...");
     inputRfid.trim();
     if (!SD.exists(RFID_FILE)) {
-        esplogW(" (libHash): RFID file not found!\n");
+        esplogW(TAG_LIB_AUTH, "(checkRfid)", "RFID file not found!");
         return false;
     }
 
     File rfidFile = SD.open(RFID_FILE, "r");
     if (!rfidFile) {
-        esplogE(" (libHash): Failed to open RFID file: %s! Unexpected error!\n", RFID_FILE);
+        esplogE(TAG_LIB_AUTH, "(checkRfid)", "Failed to open RFID file: %s! Unexpected error!", RFID_FILE);
         return false;
     }
 
@@ -326,7 +326,7 @@ bool checkRfid(String &inputRfid) {
         line.trim();
         
         if (line == inputRfid) {
-            esplogI(" (libHash): Found matching RFID record: %s\n", inputRfid.c_str());
+            esplogI(TAG_LIB_AUTH, "(checkRfid)", "Found matching RFID record: %s", inputRfid.c_str());
             recordFound = true;
             break;
         }
@@ -335,10 +335,10 @@ bool checkRfid(String &inputRfid) {
     rfidFile.close();
 
     if (recordFound) {
-        esplogI(" (libHash): RFID record exists.\n");
+        esplogI(TAG_LIB_AUTH, "(checkRfid)", "RFID record exists.");
         return true;
     } else {
-        esplogW(" (libHash): RFID record not found.\n");
+        esplogW(TAG_LIB_AUTH, "(checkRfid)", "RFID record not found.");
         return false;
     }
 }

@@ -22,11 +22,11 @@ void updateSerialZigbee() {
  * @param sendMsg The iot_alarm_message_t command to send to the zigbee module.
  * @param receivedMsg Pointer to iot_alarm_message_t that will store the received response.
  * @param timeout The time (in milliseconds) to wait for the response (default is 6000 ms).
- * @return true if the expected response was received, false if the timeout occurred.
+ * @return number of tx bytes or -1 if failed
  */
-bool waitForCorrectResponseZigbee(iot_alarm_message_t * sendMsg, iot_alarm_message_t * receivedMsg, unsigned long timeout = 5000) {
+int waitForCorrectResponseZigbee(iot_alarm_message_t * sendMsg, iot_alarm_message_t ** receivedMsg, unsigned long timeout = 5000) {
     if (sendMsg == NULL || receivedMsg == NULL) {
-        esplogW(" (libZigbee): Message to be sent or received is nullptr!\n");
+        esplogW(TAG_LIB_ZIGBEE, "(waitForCorrectResponseZigbee)", "Message to be sent or received is nullptr!");
         return false;
     }
 
@@ -34,28 +34,43 @@ bool waitForCorrectResponseZigbee(iot_alarm_message_t * sendMsg, iot_alarm_messa
         SerialZigbee.read();
     }
 
+
+    if (xTaskGetCurrentTaskHandle() != handleTaskZigbee && handleTaskZigbee != NULL) {
+        vTaskSuspend(handleTaskZigbee);
+    }
+
     unsigned long startTime = millis();
-    int tx_bytes;
+    int tx_bytes = 0;
     int rx_bytes;
+    bool ret = false;
     while (millis() - startTime < timeout) {
         // send command
         tx_bytes = send_message(UART, tx_buffer, sendMsg);
 
-        vTaskDelay(500 / portTICK_PERIOD_MS);
+        vTaskDelay(550 / portTICK_PERIOD_MS);
 
         // receive command
-        rx_bytes = receive_message(UART, rx_buffer, &receivedMsg, RX_BUF_SIZE-1);
+        rx_bytes = receive_message(UART, rx_buffer, receivedMsg, RX_BUF_SIZE-1);
 
         // check if acknowledge is received
-        if (((sendMsg->dir == IOT_ALARM_MSGDIR_COMMAND && receivedMsg->dir == IOT_ALARM_MSGDIR_COMMAND_ACK) ||
-                (sendMsg->dir == IOT_ALARM_MSGDIR_NOTIFICATION && receivedMsg->dir == IOT_ALARM_MSGDIR_NOTIFICATION_ACK)) &&
-                sendMsg->id == receivedMsg->id && receivedMsg->st == IOT_ALARM_MSGSTATUS_SUCCESS) {
-            return true;
+        if (((sendMsg->dir == IOT_ALARM_MSGDIR_COMMAND && (*receivedMsg)->dir == IOT_ALARM_MSGDIR_COMMAND_ACK) ||
+                (sendMsg->dir == IOT_ALARM_MSGDIR_NOTIFICATION && (*receivedMsg)->dir == IOT_ALARM_MSGDIR_NOTIFICATION_ACK)) &&
+                sendMsg->id == (*receivedMsg)->id && (*receivedMsg)->st == IOT_ALARM_MSGSTATUS_SUCCESS) {
+            ret = true;
+            break;
         }
     }
 
-    esplogW(" (libZigbee): Zigbee module didnt responded in time!\n");
-    return false;
+    if (xTaskGetCurrentTaskHandle() != handleTaskZigbee && handleTaskZigbee != NULL) {
+        vTaskResume(handleTaskZigbee);
+    }
+
+    if (ret == false) {
+        esplogW(TAG_LIB_ZIGBEE, "(waitForCorrectResponseZigbee)", "Zigbee module didnt responded in time!");
+        tx_bytes = -1;
+    }
+    
+    return tx_bytes;
 }
 
 bool initSerialZigbee() {
@@ -69,28 +84,23 @@ bool initSerialZigbee() {
     digitalWrite(ZIGBEE_EN_PIN, HIGH);
     #endif
 
-    Serial.println("-------------------------------------------\nZIGBEE INITIALISATION:\n");
-
     iot_alarm_message_t * msg = create_message(IOT_ALARM_MSGDIR_COMMAND, IOT_ALARM_MSGSTATUS_SUCCESS, IOT_ALARM_MSGTYPE_ECHO, 1, "\0");
     iot_alarm_message_t * ack = create_message(IOT_ALARM_MSGDIR_MAX, IOT_ALARM_MSGSTATUS_MAX, IOT_ALARM_MSGTYPE_MAX, 1, "\0");
     int ret = true;
 
+    esplogI(TAG_LIB_ZIGBEE, "(initSerialZigbee)", "ZIGBEE INITIALISATION!");
+
     // initialisation
-    if (!ret || !waitForCorrectResponseZigbee(msg, ack, 10000)) {
-        esplogW(" (libZigbee): Failed finding zigbee module!\n");
+    int tx_bytes = waitForCorrectResponseZigbee(msg, &ack, 10000);
+    if (!ret || tx_bytes <= 0) {
+        esplogW(TAG_LIB_ZIGBEE, "(initSerialZigbee)", "Failed finding zigbee module!");
         ret = false;
     } else {
-        esplogI(" (libZigbee): Zigbee module found!\n");
+        esplogI(TAG_LIB_ZIGBEE, "(initSerialZigbee)", "Zigbee module found!");
     }
 
     destroy_message(&msg);
     destroy_message(&ack);
-
-    if (!ret) {
-        Serial.println("\nINITIALISATION FAILED\n-------------------------------------------\n");
-    } else {
-        Serial.println("\nSUCCESSFULLY INITIALISED\n-------------------------------------------\n");
-    }
 
     return ret;
 }
@@ -101,11 +111,12 @@ bool zigbeeReset() {
     iot_alarm_message_t * ack = create_message(IOT_ALARM_MSGDIR_MAX, IOT_ALARM_MSGSTATUS_MAX, IOT_ALARM_MSGTYPE_MAX, 1, "\0");
 
     // sending the message
-    if (!waitForCorrectResponseZigbee(msg, ack, 10000)) {
-        esplogW(" (libZigbee): Failed sending message to zigbee module!\n");
+    int tx_bytes = waitForCorrectResponseZigbee(msg, &ack, 10000);
+    if (tx_bytes <= 0) {
+        esplogW(TAG_LIB_ZIGBEE, "(zigbeeReset)", "Failed sending message to zigbee module!");
         ret = false;
     } else {
-        esplogI(" (libZigbee): Reset command sent to zigbee module!\n");
+        esplogI(TAG_LIB_ZIGBEE, "(zigbeeReset)", "Reset command sent to zigbee module!");
     }
 
     destroy_message(&msg);
@@ -119,11 +130,12 @@ bool zigbeeFactory() {
     iot_alarm_message_t * ack = create_message(IOT_ALARM_MSGDIR_MAX, IOT_ALARM_MSGSTATUS_MAX, IOT_ALARM_MSGTYPE_MAX, 1, "\0");
 
     // sending the message
-    if (!waitForCorrectResponseZigbee(msg, ack, 10000)) {
-        esplogW(" (libZigbee): Failed sending message to zigbee module!\n");
+    int tx_bytes = waitForCorrectResponseZigbee(msg, &ack, 10000);
+    if (tx_bytes <= 0) {
+        esplogW(TAG_LIB_ZIGBEE, "(zigbeeFactory)", "Failed sending message to zigbee module!");
         ret = false;
     } else {
-        esplogI(" (libZigbee): Factory reset command sent to zigbee module!\n");
+        esplogI(TAG_LIB_ZIGBEE, "(zigbeeFactory)", "Factory reset command sent to zigbee module!");
     }
 
     destroy_message(&msg);
@@ -131,7 +143,26 @@ bool zigbeeFactory() {
     return ret;
 }
 
-bool zigbeeOpen(uint8_t duration = 180) {
+bool zigbeeCount() {
+    int ret = true;
+    iot_alarm_message_t * msg = create_message(IOT_ALARM_MSGDIR_COMMAND, IOT_ALARM_MSGSTATUS_SUCCESS, IOT_ALARM_MSGTYPE_DEV_COUNT, 1, "\0");
+    iot_alarm_message_t * ack = create_message(IOT_ALARM_MSGDIR_MAX, IOT_ALARM_MSGSTATUS_MAX, IOT_ALARM_MSGTYPE_MAX, 1, "\0");
+
+    // sending the message
+    int tx_bytes = waitForCorrectResponseZigbee(msg, &ack, 10000);
+    if (tx_bytes <= 0) {
+        esplogW(TAG_LIB_ZIGBEE, "(zigbeeCount)", "Failed sending message to zigbee module!");
+        ret = false;
+    } else {
+        esplogI(TAG_LIB_ZIGBEE, "(zigbeeCount)", "Devices count command sent to zigbee module!");
+    }
+
+    destroy_message(&msg);
+    destroy_message(&ack);
+    return ret;
+}
+
+bool zigbeeOpen(uint8_t duration) {
     int ret = true;
     char load[12];
     sprintf(load, "%d", duration);
@@ -139,11 +170,12 @@ bool zigbeeOpen(uint8_t duration = 180) {
     iot_alarm_message_t * ack = create_message(IOT_ALARM_MSGDIR_MAX, IOT_ALARM_MSGSTATUS_MAX, IOT_ALARM_MSGTYPE_MAX, 1, "\0");
 
     // sending the message
-    if (!waitForCorrectResponseZigbee(msg, ack, 10000)) {
-        esplogW(" (libZigbee): Failed sending message to zigbee module!\n");
+    int tx_bytes = waitForCorrectResponseZigbee(msg, &ack, 10000);
+    if (tx_bytes <= 0) {
+        esplogW(TAG_LIB_ZIGBEE, "(zigbeeOpen)", "Failed sending message to zigbee module!");
         ret = false;
     } else {
-        esplogI(" (libZigbee): Open zigbee network command sent to zigbee module!\n");
+        esplogI(TAG_LIB_ZIGBEE, "(zigbeeOpen)", "Open zigbee network command sent to zigbee module!");
     }
 
     destroy_message(&msg);
@@ -157,11 +189,12 @@ bool zigbeeClose() {
     iot_alarm_message_t * ack = create_message(IOT_ALARM_MSGDIR_MAX, IOT_ALARM_MSGSTATUS_MAX, IOT_ALARM_MSGTYPE_MAX, 1, "\0");
 
     // sending the message
-    if (!waitForCorrectResponseZigbee(msg, ack, 10000)) {
-        esplogW(" (libZigbee): Failed sending message to zigbee module!\n");
+    int tx_bytes = waitForCorrectResponseZigbee(msg, &ack, 10000);
+    if (tx_bytes <= 0) {
+        esplogW(TAG_LIB_ZIGBEE, "(zigbeeClose)", "Failed sending message to zigbee module!");
         ret = false;
     } else {
-        esplogI(" (libZigbee): Close zigbee network command sent to zigbee module!\n");
+        esplogI(TAG_LIB_ZIGBEE, "(zigbeeClose)", "Close zigbee network command sent to zigbee module!");
     }
 
     destroy_message(&msg);
@@ -175,11 +208,13 @@ bool zigbeeClear() {
     iot_alarm_message_t * ack = create_message(IOT_ALARM_MSGDIR_MAX, IOT_ALARM_MSGSTATUS_MAX, IOT_ALARM_MSGTYPE_MAX, 1, "\0");
 
     // sending the message
-    if (!waitForCorrectResponseZigbee(msg, ack, 10000)) {
-        esplogW(" (libZigbee): Failed sending message to zigbee module!\n");
+    int tx_bytes = waitForCorrectResponseZigbee(msg, &ack, 10000);
+    if (tx_bytes <= 0) {
+        esplogW(TAG_LIB_ZIGBEE, "(zigbeeClear)", "Failed sending message to zigbee module!");
         ret = false;
     } else {
-        esplogI(" (libZigbee): Clear zigbee network command sent to zigbee module!\n");
+        esplogI(TAG_LIB_ZIGBEE, "(zigbeeClear)", "Clear zigbee network command sent to zigbee module!");
+        zigbeeScreenD(&g_vars, &g_config);
     }
 
     destroy_message(&msg);
@@ -187,12 +222,11 @@ bool zigbeeClear() {
     return ret;
 }
 
-bool zigbeeAttrRead(esp_zb_ieee_addr_t ieee_addr, uint16_t short_addr, uint8_t endpoint_id, uint16_t cluster_id, uint16_t attr_id, esp_zb_zcl_attr_type_t value_type, uint32_t value) {
+bool zigbeeAttrRead(iot_alarm_attr_load_t * attr) {
     int ret = true;
     size_t length;
-    char serialized_load[1024];
 
-    iot_alarm_attr_load_t * attr = create_attr("\0", "\0", "\0", 0, ieee_addr, short_addr, 0, endpoint_id, cluster_id, attr_id, value_type, value);
+    char serialized_load[1024];
     memset(serialized_load, 0, sizeof(serialized_load));
     serialize_attr(attr, serialized_load, &length);
 
@@ -200,11 +234,12 @@ bool zigbeeAttrRead(esp_zb_ieee_addr_t ieee_addr, uint16_t short_addr, uint8_t e
     iot_alarm_message_t * ack = create_message(IOT_ALARM_MSGDIR_MAX, IOT_ALARM_MSGSTATUS_MAX, IOT_ALARM_MSGTYPE_MAX, 1, "\0");
 
     // sending the message
-    if (!waitForCorrectResponseZigbee(msg, ack, 10000)) {
-        esplogW(" (libZigbee): Failed sending message to zigbee module!\n");
+    int tx_bytes = waitForCorrectResponseZigbee(msg, &ack, 10000);
+    if (tx_bytes <= 0) {
+        esplogW(TAG_LIB_ZIGBEE, "(zigbeeAttrRead)", "Failed sending message to zigbee module!");
         ret = false;
     } else {
-        esplogI(" (libZigbee): Read attribute command sent to zigbee module!\n");
+        esplogI(TAG_LIB_ZIGBEE, "(zigbeeAttrRead)", "Read attribute command sent to zigbee module!");
     }
 
     destroy_message(&msg);
@@ -212,12 +247,11 @@ bool zigbeeAttrRead(esp_zb_ieee_addr_t ieee_addr, uint16_t short_addr, uint8_t e
     return ret;
 }
 
-bool zigbeeAttrWrite(esp_zb_ieee_addr_t ieee_addr, uint16_t short_addr, uint8_t endpoint_id, uint16_t cluster_id, uint16_t attr_id, esp_zb_zcl_attr_type_t value_type, uint32_t value) {
+bool zigbeeAttrWrite(iot_alarm_attr_load_t * attr) {
     int ret = true;
     size_t length;
+    
     char serialized_load[1024];
-
-    iot_alarm_attr_load_t * attr = create_attr("\0", "\0", "\0", 0, ieee_addr, short_addr, 0, endpoint_id, cluster_id, attr_id, value_type, value);
     memset(serialized_load, 0, sizeof(serialized_load));
     serialize_attr(attr, serialized_load, &length);
 
@@ -225,16 +259,84 @@ bool zigbeeAttrWrite(esp_zb_ieee_addr_t ieee_addr, uint16_t short_addr, uint8_t 
     iot_alarm_message_t * ack = create_message(IOT_ALARM_MSGDIR_MAX, IOT_ALARM_MSGSTATUS_MAX, IOT_ALARM_MSGTYPE_MAX, 1, "\0");
 
     // sending the message
-    if (!waitForCorrectResponseZigbee(msg, ack, 10000)) {
-        esplogW(" (libZigbee): Failed sending message to zigbee module!\n");
+    int tx_bytes = waitForCorrectResponseZigbee(msg, &ack, 10000);
+    if (tx_bytes <= 0) {
+        esplogW(TAG_LIB_ZIGBEE, "(zigbeeAttrWrite)", "Failed sending message to zigbee module!");
         ret = false;
     } else {
-        esplogI(" (libZigbee): Write attribute command sent to zigbee module!\n");
+        esplogI(TAG_LIB_ZIGBEE, "(zigbeeAttrWrite)", "Write attribute command sent to zigbee module!");
     }
 
     destroy_message(&msg);
     destroy_message(&ack);
     destroy_attr(&attr);
+    return ret;
+}
+
+// TODO
+bool zigbeeAttrReadWriteHandler(iot_alarm_attr_load_t * attr) {return true;}
+
+bool zigbeeAttrReportHandler(iot_alarm_attr_load_t * attr) {
+    bool ret = false;
+
+    if (attr != NULL) {
+        // esplogI(TAG_LIB_DEBUG, "(zigbeeAttrReportHandler)", "Device data: %s - %s [%s (%lu)]", attr->manuf, attr->name, attr->type, attr->type_id);
+        // esplogI(TAG_LIB_DEBUG, "(zigbeeAttrReportHandler)", "Attribute data: short: %04hx/%d, cluster: %04hx, attribute: %04hx, type: %d, value: %lu",
+        //     attr->short_addr, attr->endpoint_id, attr->cluster_id, attr->attr_id, attr->value_type, attr->value);
+
+        // local application handeling
+        switch (attr->type_id) {
+            // handle IAS zone reports, occupacy reports
+            case 0x0500000DU:
+            case 0x05000015U:
+            case 0x0500002DU:
+            case 0x05000225U:
+                if (attr->attr_id == 0x0002 && attr->value == 1) {
+                    esplogW(TAG_RTOS_ZIGBEE, "(zigbeeAttrReportHandler)", "Alarm event triggered! [ZONESTATUS = 1 at 0x%04hx/%d]", attr->short_addr, attr->endpoint_id);
+                    zigbeeScreenR(&g_vars, &g_config);
+                    if (g_vars.state == STATE_ALARM_OK || g_vars.state == STATE_ALARM_W || g_vars.state == STATE_ALARM_E) {
+                        g_vars.alarm_events++;
+                    }
+                }
+                break;
+
+            case 0x04060000U:
+            case 0x04060001U:
+            case 0x04060002U:
+                if (attr->attr_id == 0x0000 && attr->value == 1) {
+                    esplogW(TAG_RTOS_ZIGBEE, "(zigbeeAttrReportHandler)", "Alarm event triggered! [OCCUPANCY = 1 at 0x%04hx/%d]", attr->short_addr, attr->endpoint_id);
+                    zigbeeScreenR(&g_vars, &g_config);
+                    if (g_vars.state == STATE_ALARM_OK || g_vars.state == STATE_ALARM_W || g_vars.state == STATE_ALARM_E) {
+                        g_vars.alarm_events++;
+                    }
+                }
+                break;
+
+            // handle fire sensor reports
+            case 0x05000028U:
+            case 0x0500002BU:
+                if (attr->attr_id == 0x0002) {
+                    if (attr->value == 1) {esplogW(TAG_RTOS_ZIGBEE, "(zigbeeAttrReportHandler)", "Fire alarm triggered! [ZONESTATUS = 1 at 0x%04hx/%d]", attr->short_addr, attr->endpoint_id);}
+                    if (g_vars.state == STATE_ALARM_OK || g_vars.state == STATE_ALARM_W || g_vars.state == STATE_ALARM_E) {
+                        g_vars.alarm_event_fire = attr->value > 0;
+                    }
+                }
+                break;
+
+            // handle water sensor reports
+            case 0x0500002AU:
+                if (attr->attr_id == 0x0002) {
+                    if (attr->value == 1) {esplogW(TAG_RTOS_ZIGBEE, "(zigbeeAttrReportHandler)", "Water-leakage alarm triggered! [ZONESTATUS = 1 at 0x%04hx/%d]", attr->short_addr, attr->endpoint_id);}
+                    g_vars.alarm_event_water = attr->value > 0;
+                }
+                break;
+
+            default:
+                break;
+        }
+        ret = true;
+    }
+
     return ret;
 }
 
@@ -250,12 +352,12 @@ uint8_t* rx_buffer = NULL;
 void serialize_message(iot_alarm_message_t *msg, uint8_t *buffer, size_t *bytes) {
     
     if (msg == NULL) {
-        esplogW(" (libZigbee): Error: Message is nullptr!\n");
+        esplogW(TAG_LIB_ZIGBEE, "(serialize_message)", "Error: Message is nullptr!");
         return;
     }
     
     if (buffer == NULL) {
-        esplogW(" (libZigbee): Error: Buffer is nullptr!\n");
+        esplogW(TAG_LIB_ZIGBEE, "(serialize_message)", "Error: Buffer is nullptr!");
         return;
     }
 
@@ -284,20 +386,20 @@ void serialize_message(iot_alarm_message_t *msg, uint8_t *buffer, size_t *bytes)
     *bytes = offset;
 }
 
-void deserialize_message(iot_alarm_message_t **msg, uint8_t *buffer) {
+void deserialize_message(iot_alarm_message_t **msg, uint8_t *buffer, size_t buffer_len) {
 
     if (msg == NULL) {
-        esplogW(" (libZigbee): Error: Message is nullptr!\n");
+        esplogW(TAG_LIB_ZIGBEE, "(deserialize_message)", "Error: Message is nullptr!");
         return;
     }
 
     if (*msg == NULL) {
-        esplogW(" (libZigbee): Error: Message is nullptr!\n");
+        esplogW(TAG_LIB_ZIGBEE, "(deserialize_message)", "Error: Message is nullptr!");
         return;
     }
 
     if (buffer == NULL) {
-        esplogW(" (libZigbee): Error: Buffer is nullptr!\n");
+        esplogW(TAG_LIB_ZIGBEE, "(deserialize_message)", "Error: Buffer is nullptr!");
         return;
     }
 
@@ -309,45 +411,73 @@ void deserialize_message(iot_alarm_message_t **msg, uint8_t *buffer) {
     uint32_t length;
 
     // Extract message direction
-    memcpy(&dir, buffer + offset, sizeof(dir));
-    offset += sizeof(dir);
+    if (offset + sizeof(dir) <= buffer_len) {
+        memcpy(&dir, buffer + offset, sizeof(dir));
+        offset += sizeof(dir);
+    } else {
+        esplogW(TAG_LIB_ZIGBEE, "(deserialize_message)", "The buffer length is too small to deserialise all data!");
+    }
 
     // Extract message status
-    memcpy(&st, buffer + offset, sizeof(st));
-    offset += sizeof(st);
+    if (offset + sizeof(st) <= buffer_len) {
+        memcpy(&st, buffer + offset, sizeof(st));
+        offset += sizeof(st);
+    } else {
+        esplogW(TAG_LIB_ZIGBEE, "(deserialize_message)", "The buffer length is too small to deserialise all data!");
+    }
 
     // Extract message ID
-    memcpy(&id, buffer + offset, sizeof(id));
-    offset += sizeof(id);
+    if (offset + sizeof(id) <= buffer_len) {
+        memcpy(&id, buffer + offset, sizeof(id));
+        offset += sizeof(id);
+    } else {
+        esplogW(TAG_LIB_ZIGBEE, "(deserialize_message)", "The buffer length is too small to deserialise all data!");
+    }
 
     // Extract length of load
-    memcpy(&length, buffer + offset, sizeof(length));
-    offset += sizeof(length);
+    if (offset + sizeof(length) <= buffer_len) {
+        memcpy(&length, buffer + offset, sizeof(length));
+        offset += sizeof(length);
+    } else {
+        esplogW(TAG_LIB_ZIGBEE, "(deserialize_message)", "The buffer length is too small to deserialise all data!");
+    }
 
     // Extract load itself
     char* load = (char *)malloc(length + 1);
     if (load == NULL) {
-        esplogW(" (libZigbee): Failed to allocate memory for message load!\n");
+        esplogW(TAG_LIB_ZIGBEE, "(deserialize_message)", "Failed to allocate memory for message load!");
         return;
     }
 
-    if (length > 0) {
+    if (length > 0 && offset + length <= buffer_len) {
         memcpy(load, buffer + offset, length);
+    } else {
+        esplogW(TAG_LIB_ZIGBEE, "(deserialize_message)", "The buffer length is too small to deserialise all data!");
     }
 
     load[length] = '\0';
 
     destroy_message(msg);
-    *msg = create_message(dir, st, id, length, load);
+    *msg = (iot_alarm_message_t *)malloc(sizeof(iot_alarm_message_t));
+    if (msg == NULL) {
+        esplogW(TAG_LIB_ZIGBEE, "(create_message)", "Failed to allocate memory for message!");
+        free(load);
+        load = NULL;
+        return;
+    }
 
-    free(load);
+    (*msg)->dir = dir;
+    (*msg)->id = id;
+    (*msg)->st = st;
+    (*msg)->length = length;
+    (*msg)->load = load;
 }
 
 iot_alarm_message_t * create_message(message_direction_t dir, message_status_t st, message_type_t id, uint32_t length, const char* load) {
 
     iot_alarm_message_t *msg = (iot_alarm_message_t *)malloc(sizeof(iot_alarm_message_t));
     if (msg == NULL) {
-        esplogW(" (libZigbee): Failed to allocate memory for message!\n");
+        esplogW(TAG_LIB_ZIGBEE, "(create_message)", "Failed to allocate memory for message!");
         return NULL;
     }
 
@@ -357,8 +487,9 @@ iot_alarm_message_t * create_message(message_direction_t dir, message_status_t s
     msg->length = length;
     msg->load = (char *)malloc(length + 1);
     if (msg->load == NULL) {
-        esplogW(" (libZigbee): Failed to allocate memory for message load!\n");
+        esplogW(TAG_LIB_ZIGBEE, "(create_message)", "Failed to allocate memory for message load!");
         free(msg);
+        msg = NULL;
         return NULL;
     }
     memcpy(msg->load, load, length);
@@ -371,6 +502,7 @@ void destroy_message(iot_alarm_message_t **msg) {
     if (*msg != NULL) {
         if ((*msg)->load != NULL) {
             free((*msg)->load);
+            (*msg)->load = NULL;
         }
 
         free(*msg);
@@ -405,15 +537,23 @@ int send_message(uart_port_t uart, uint8_t* tx_buffer, iot_alarm_message_t *msg)
     serialize_message(msg, tx_buffer, &length);
     int tx_bytes = uart_write_bytes(uart, (const char *)tx_buffer, length);
     if (tx_bytes == length) {
-        esplogI(" (libZigbee): Message (length: %d) was sent successfully!\n", tx_bytes);
+        // esplogI(TAG_LIB_ZIGBEE, "(send_message)", "Message (length: %d) was sent successfully!", tx_bytes);
     } else {
-        esplogW(" (libZigbee): Failed to send message!\n");
+        esplogW(TAG_LIB_ZIGBEE, "(send_message)", "Failed to send message!");
     }
 
     return tx_bytes;
 }
 
 int receive_message(uart_port_t uart, uint8_t* rx_buffer, iot_alarm_message_t **msg, size_t max_len) {
+    if (msg == NULL || *msg == NULL) {
+        esplogW(TAG_LIB_ZIGBEE, "(receive_message)", "Error: Message is nullptr!");
+    }
+
+    if (rx_buffer == NULL) {
+        esplogW(TAG_LIB_ZIGBEE, "(receive_message)", "Error: Buffer is nullptr!");
+    }
+
     memset(rx_buffer, 0, max_len);
     int rx_bytes = read_uart(uart, rx_buffer, max_len);
 
@@ -421,17 +561,17 @@ int receive_message(uart_port_t uart, uint8_t* rx_buffer, iot_alarm_message_t **
     for (size_t i = 0; i < rx_bytes; i++) {
         snprintf(&hex_string[i * 3], 4, "%02X ", rx_buffer[i]);
     }
-    esplogI("Buffer (length %d): %s\n", rx_bytes, hex_string); // */
+    esplogI(TAG_LIB_DEBUG, "(receive_message)", "Buffer (length %d): %s", rx_bytes, hex_string); // */
 
     if (rx_bytes < max_len) {
         rx_buffer[rx_bytes] = 0;
     } else {
         rx_buffer[max_len - 1] = 0;
-        esplogW(" (libZigbee): RX buffer overflow. Data may be truncated.\n");
+        esplogW(TAG_LIB_ZIGBEE, "(receive_message)", "RX buffer overflow. Data may be truncated.");
     }
     
     if (rx_bytes > 0) {
-        deserialize_message(msg, rx_buffer);
+        deserialize_message(msg, rx_buffer, rx_bytes);
     }
 
     return rx_bytes;
@@ -455,6 +595,7 @@ int send_attr(uart_port_t uart, uint8_t* tx_buffer, iot_alarm_attr_load_t * load
             break;
     }
 
+    iot_alarm_message_t * ack = create_message(IOT_ALARM_MSGDIR_MAX, IOT_ALARM_MSGSTATUS_MAX, IOT_ALARM_MSGTYPE_MAX, 1, "\0");
     iot_alarm_message_t msg = {
         .dir = dir,
         .st = IOT_ALARM_MSGSTATUS_SUCCESS,
@@ -463,40 +604,12 @@ int send_attr(uart_port_t uart, uint8_t* tx_buffer, iot_alarm_attr_load_t * load
         .load = serialized_load,
     };
 
-    // clear uart
-    size_t available = 0;
-    uint8_t temp_buffer[256];
-    uart_get_buffered_data_len(uart, &available);
-    while (available) {
-        uart_read_bytes(uart, temp_buffer, available, pdMS_TO_TICKS(500));
-        uart_get_buffered_data_len(uart, &available);
-    }
-
-    unsigned long startTime = esp_timer_get_time() / 1000;
-    iot_alarm_message_t * ack = create_message(IOT_ALARM_MSGDIR_MAX, IOT_ALARM_MSGSTATUS_MAX, IOT_ALARM_MSGTYPE_MAX, 1, "\0");
-    int tx_bytes = 0;
-    int rx_bytes = 0;
-    bool ret = false;
-
-    // send message and wait for acknowledge
-    while (esp_timer_get_time() / 1000 - startTime < 5000) {
-        tx_bytes = send_message(uart, tx_buffer, &msg);
-        vTaskDelay(500 / portTICK_PERIOD_MS);
-        rx_bytes = receive_message(uart, temp_buffer, &ack, 255);
-
-        if (((msg.dir == IOT_ALARM_MSGDIR_COMMAND && ack->dir == IOT_ALARM_MSGDIR_COMMAND_ACK) ||
-             (msg.dir == IOT_ALARM_MSGDIR_NOTIFICATION && ack->dir == IOT_ALARM_MSGDIR_NOTIFICATION_ACK)) &&
-              msg.id == ack->id && ack->st == IOT_ALARM_MSGSTATUS_SUCCESS) {
-            ret = true;
-            break;
-        }
+    int tx_bytes = waitForCorrectResponseZigbee(&msg, &ack, 10000);
+    if (tx_bytes <= 0) {
+        esplogW(TAG_LIB_ZIGBEE, "(send_attr)", "Failed to get acknowlede for sending attribute data!");
     }
 
     destroy_message(&ack);
-
-    if (!ret) {
-        esplogW(" (libZigbee): Failed to get acknowlede for sending attribute data!");
-    }
 
     return tx_bytes;
 }
@@ -522,12 +635,12 @@ int send_attr(uart_port_t uart, uint8_t* tx_buffer, iot_alarm_attr_load_t * load
 
 void serialize_attr(iot_alarm_attr_load_t *attr, char *buffer, size_t *bytes) {
     if (attr == NULL) {
-        esplogW(" (libZigbee): Error: Message is nullptr!\n");
+        esplogW(TAG_LIB_ZIGBEE, "(serialize_attr)", "Error: Message is nullptr!");
         return;
     }
     
     if (buffer == NULL) {
-        esplogW(" (libZigbee): Error: Buffer is nullptr!\n");
+        esplogW(TAG_LIB_ZIGBEE, "(serialize_attr)", "Error: Buffer is nullptr!");
         return;
     }
 
@@ -589,19 +702,19 @@ void serialize_attr(iot_alarm_attr_load_t *attr, char *buffer, size_t *bytes) {
     *bytes = offset;
 }
 
-void deserialize_attr(iot_alarm_attr_load_t **attr, uint8_t *buffer) {
+void deserialize_attr(iot_alarm_attr_load_t **attr, uint8_t *buffer, size_t buffer_len) {
     if (attr == NULL) {
-        esplogW(" (libZigbee): Error: Message is nullptr!\n");
+        esplogW(TAG_LIB_ZIGBEE, "(deserialize_attr)", "Error: Message is nullptr!");
         return;
     }
 
     if (*attr == NULL) {
-        esplogW(" (libZigbee): Error: Message is nullptr!\n");
+        esplogW(TAG_LIB_ZIGBEE, "(deserialize_attr)", "Error: Message is nullptr!");
         return;
     }
 
     if (buffer == NULL) {
-        esplogW(" (libZigbee): Error: Buffer is nullptr!\n");
+        esplogW(TAG_LIB_ZIGBEE, "(deserialize_attr)", "Error: Buffer is nullptr!");
         return;
     }
 
@@ -620,35 +733,54 @@ void deserialize_attr(iot_alarm_attr_load_t **attr, uint8_t *buffer) {
     esp_zb_zcl_attr_type_t value_type;
     uint32_t value;
 
-    memcpy(&ieee_addr, buffer + offset, sizeof(ieee_addr));
-    offset += sizeof(ieee_addr);
-    memcpy(&short_addr, buffer + offset, sizeof(short_addr));
-    offset += sizeof(short_addr);
+    if (offset + sizeof(ieee_addr) <= buffer_len) {
+        memcpy(&ieee_addr, buffer + offset, sizeof(ieee_addr));
+        offset += sizeof(ieee_addr);
+    } else {
+        esplogW(TAG_LIB_ZIGBEE, "(deserialize_attr)", "The buffer length is too small to deserialise all data!");
+    }
 
-    memcpy(&device_id, buffer + offset, sizeof(device_id));
-    offset += sizeof(device_id);
-    memcpy(&endpoint_id, buffer + offset, sizeof(endpoint_id));
-    offset += sizeof(endpoint_id);
-    memcpy(&cluster_id, buffer + offset, sizeof(cluster_id));
-    offset += sizeof(cluster_id);
-    memcpy(&attr_id, buffer + offset, sizeof(attr_id));
-    offset += sizeof(attr_id);
+    if (offset + sizeof(short_addr) <= buffer_len) {
+        memcpy(&short_addr, buffer + offset, sizeof(short_addr));
+        offset += sizeof(short_addr);
+    } else {
+        esplogW(TAG_LIB_ZIGBEE, "(deserialize_attr)", "The buffer length is too small to deserialise all data!");
+    }
 
-    memcpy(&value_type, buffer + offset, sizeof(value_type));
-    offset += sizeof(value_type);
+    if (offset + sizeof(device_id) <= buffer_len) {
+        memcpy(&device_id, buffer + offset, sizeof(device_id));
+        offset += sizeof(device_id);
+    } else {
+        esplogW(TAG_LIB_ZIGBEE, "(deserialize_attr)", "The buffer length is too small to deserialise all data!");
+    }
 
-    // debug prints
-    // esplogI("DESERIALISE: manufacturer: %s\n", manuf);
-    // esplogI("DESERIALISE: name: %s\n", name);
-    // esplogI("DESERIALISE: type: %s\n", type);
-    // esplogI("DESERIALISE: type_id: %lu\n", type_id);
-    // esplogI("DESERIALISE: ieee_addr: %s\n", ieee_addr);
-    // esplogI("DESERIALISE: short_addr: %d\n", short_addr);
-    // esplogI("DESERIALISE: device_id: %d\n", device_id);
-    // esplogI("DESERIALISE: endpoint_id: %d\n", endpoint_id);
-    // esplogI("DESERIALISE: cluster_id: %d\n", cluster_id);
-    // esplogI("DESERIALISE: attr_id: %d\n", attr_id);
-    // esplogI("DESERIALISE: value_type: %d\n", value_type);
+    if (offset + sizeof(endpoint_id) <= buffer_len) {
+        memcpy(&endpoint_id, buffer + offset, sizeof(endpoint_id));
+        offset += sizeof(endpoint_id);
+    } else {
+        esplogW(TAG_LIB_ZIGBEE, "(deserialize_attr)", "The buffer length is too small to deserialise all data!");
+    }
+
+    if (offset + sizeof(cluster_id) <= buffer_len) {
+        memcpy(&cluster_id, buffer + offset, sizeof(cluster_id));
+        offset += sizeof(cluster_id);
+    } else {
+        esplogW(TAG_LIB_ZIGBEE, "(deserialize_attr)", "The buffer length is too small to deserialise all data!");
+    }
+
+    if (offset + sizeof(attr_id) <= buffer_len) {
+        memcpy(&attr_id, buffer + offset, sizeof(attr_id));
+        offset += sizeof(attr_id);
+    } else {
+        esplogW(TAG_LIB_ZIGBEE, "(deserialize_attr)", "The buffer length is too small to deserialise all data!");
+    }
+
+    if (offset + sizeof(value_type) <= buffer_len) {
+        memcpy(&value_type, buffer + offset, sizeof(value_type));
+        offset += sizeof(value_type);
+    } else {
+        esplogW(TAG_LIB_ZIGBEE, "(deserialize_attr)", "The buffer length is too small to deserialise all data!");
+    }
 
     switch (value_type) {
         case ESP_ZB_ZCL_ATTR_TYPE_8BIT:
@@ -664,29 +796,51 @@ void deserialize_attr(iot_alarm_attr_load_t **attr, uint8_t *buffer) {
         case ESP_ZB_ZCL_ATTR_TYPE_32BIT:
         case ESP_ZB_ZCL_ATTR_TYPE_32BITMAP:
         case ESP_ZB_ZCL_ATTR_TYPE_U32:
-            memcpy(&value, buffer + offset, sizeof(value));
-            offset += sizeof(value);
-            // esplogI("DESERIALISE: value: %lu\n", value);
+            if (offset + sizeof(value) <= buffer_len) {
+                memcpy(&value, buffer + offset, sizeof(value));
+                offset += sizeof(value);
+            } else {
+                esplogW(TAG_LIB_ZIGBEE, "(deserialize_attr)", "The buffer length is too small to deserialise all data!");
+            }
             break;
 
         default:
             break;
     }
 
-    memcpy(&type_id, buffer + offset, sizeof(type_id));
-    offset += sizeof(type_id);
-    memcpy(&type, buffer + offset, sizeof(type));
-    offset += sizeof(type);
-    memcpy(&manuf, buffer + offset, sizeof(manuf));
-    offset += sizeof(manuf);
-    memcpy(&name, buffer + offset, sizeof(name));
-    offset += sizeof(name);
+    if (offset + sizeof(type_id) <= buffer_len) {
+        memcpy(&type_id, buffer + offset, sizeof(type_id));
+        offset += sizeof(type_id);
+    } else {
+        esplogW(TAG_LIB_ZIGBEE, "(deserialize_attr)", "The buffer length is too small to deserialise all data!");
+    }
+
+    if (offset + sizeof(type) <= buffer_len) {
+        memcpy(&type, buffer + offset, sizeof(type));
+        offset += sizeof(type);
+    } else {
+        esplogW(TAG_LIB_ZIGBEE, "(deserialize_attr)", "The buffer length is too small to deserialise all data!");
+    }
+    
+    if (offset + sizeof(manuf) <= buffer_len) {
+        memcpy(&manuf, buffer + offset, sizeof(manuf));
+        offset += sizeof(manuf);
+    } else {
+        esplogW(TAG_LIB_ZIGBEE, "(deserialize_attr)", "The buffer length is too small to deserialise all data!");
+    }
+    
+    if (offset + sizeof(name) <= buffer_len) {
+        memcpy(&name, buffer + offset, sizeof(name));
+        offset += sizeof(name);
+    } else {
+        esplogW(TAG_LIB_ZIGBEE, "(deserialize_attr)", "The buffer length is too small to deserialise all data!");
+    }
 
     /* char hex_string[offset * 3 + 1];
     for (size_t i = 0; i < offset; i++) {
         snprintf(&hex_string[i * 3], 4, "%02X ", buffer[i]);
     }
-    esplogI("Buffer (length %d): %s\n", offset, hex_string); // */
+    esplogI(TAG_LIB_DEBUG, "(deserialize_attr)", "Buffer (length %d): %s", offset, hex_string); // */
 
     destroy_attr(attr);
     *attr = create_attr(manuf, name, type, type_id, ieee_addr, short_addr, device_id, endpoint_id, cluster_id, attr_id, value_type, value);
@@ -696,7 +850,7 @@ iot_alarm_attr_load_t * create_attr(const char * manuf,const  char * name,const 
 
     iot_alarm_attr_load_t *attr = (iot_alarm_attr_load_t *)malloc(sizeof(iot_alarm_attr_load_t));
     if (attr == NULL) {
-        esplogW(" (libZigbee): Failed to allocate memory for attr!\n");
+        esplogW(TAG_LIB_ZIGBEE, "(create_attr)", "Failed to allocate memory for attr!");
         return NULL;
     }
 
@@ -756,16 +910,153 @@ void destroy_attr(iot_alarm_attr_load_t **attr) {
     }
 }
 
+bool compare_attr(iot_alarm_attr_load_t attr1, iot_alarm_attr_load_t attr2) {
+    return (attr1.manuf == attr2.manuf && attr1.name == attr2.name && attr1.type == attr2.type && attr1.type_id == attr2.type_id && 
+        attr1.device_id == attr2.device_id && attr1.endpoint_id == attr2.endpoint_id && attr1.cluster_id == attr2.cluster_id && attr1.attr_id == attr2.attr_id && 
+        attr1.value_type == attr2.value_type && attr1.value == attr2.value && attr1.short_addr == attr2.short_addr && attr1.ieee_addr == attr2.ieee_addr);
+}
+
+void copy_attr(iot_alarm_attr_load_t * src, iot_alarm_attr_load_t * dst) {
+    if (src != NULL && dst != NULL) {
+        memcpy(dst->manuf, src->manuf, sizeof(dst->manuf));
+        memcpy(dst->name, src->name, sizeof(dst->name));
+        memcpy(dst->type, src->type, sizeof(dst->type));
+        dst->type_id = src->type_id;
+        dst->short_addr = src->short_addr;
+        memcpy(dst->ieee_addr, src->ieee_addr, sizeof(dst->ieee_addr));
+        dst->device_id = src->device_id;
+        dst->endpoint_id = src->endpoint_id;
+        dst->cluster_id = src->cluster_id;
+        dst->attr_id = src->attr_id;
+        dst->value_type = src->value_type;
+        dst->value = src->value;
+    }
+}
+
+bool pack_attr(iot_alarm_attr_load_t * attr, String * jsonStr) {
+    if (attr == NULL) {
+        esplogW(TAG_LIB_ZIGBEE, "(pack_attr)", "Error: Attr struct is nullptr!");
+        return false;
+    }
+
+    /* esplogI(TAG_LIB_ZIGBEE, NULL, "Attr packing: short: %04hx, ieee: %02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X, dev_id: %d, ep_id: %d, cluster_id: %04hx, attr_id: %04hx, value: %lu",
+                  attr->short_addr,
+                  attr->ieee_addr[7], attr->ieee_addr[6], attr->ieee_addr[5], attr->ieee_addr[4],
+                  attr->ieee_addr[3], attr->ieee_addr[2], attr->ieee_addr[1], attr->ieee_addr[0],
+                  attr->device_id, attr->endpoint_id, attr->cluster_id, attr->attr_id, attr->value); */
+
+    // Create a JSON document
+    JsonDocument doc;
+    JsonObject device = doc["device"].to<JsonObject>();
+
+    // Populate the JSON document
+    device["short"] = attr->short_addr;
+    char ieee_str[41]; // For converting ieee_addr to string
+    sprintf(ieee_str, "%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X",
+            attr->ieee_addr[7], attr->ieee_addr[6], attr->ieee_addr[5], attr->ieee_addr[4],
+            attr->ieee_addr[3], attr->ieee_addr[2], attr->ieee_addr[1], attr->ieee_addr[0]);
+    device["ieee"] = ieee_str;
+    device["id"] = attr->device_id;
+    device["manufacturer"] = attr->manuf;
+    device["name"] = attr->name;
+    device["type"] = attr->type;
+    device["type_id"] = attr->type_id;
+
+    doc["ep_id"] = attr->endpoint_id;
+    doc["cluster_id"] = attr->cluster_id;
+    doc["attr_id"] = attr->attr_id;
+    doc["value_type"] = attr->value_type;
+    doc["value"] = attr->value;
+    doc["timestamp"] = g_vars.datetime;
+
+    // Serialize JSON to String
+    if (serializeJson(doc, *jsonStr) == 0) {
+        esplogE(TAG_LIB_ZIGBEE, "(pack_attr)", "Failed serialise data!");
+        doc.clear();
+        return false;
+    }
+
+    doc.clear();
+    // esplogI(TAG_LIB_ZIGBEE, "(pack_attr)", "Successully created attr json. %s", (*jsonStr).c_str());
+    return true;
+}
+
+bool unpack_attr(iot_alarm_attr_load_t * attr, String jsonStr) {
+    if (attr == NULL) {
+        esplogW(TAG_LIB_ZIGBEE, "(unpack_attr)", "Error: Attr struct is nullptr!");
+        return false;
+    }
+
+    // Parse the JSON string
+    JsonDocument doc; // Adjust size based on expected JSON complexity
+    DeserializationError error = deserializeJson(doc, jsonStr);
+
+    // Check for errors
+    if (error) {
+        esplogW(TAG_LIB_ZIGBEE, "(unpack_attr)", "Failed to parse JSON string! Error: %s", error.c_str());
+        doc.clear();
+        return false;
+    }
+
+    if (!doc["device"].is<JsonObject>()) {
+        esplogW(TAG_LIB_ZIGBEE, "(unpack_attr)", "MQTT message is missing device field! Ignoring...");
+        doc.clear();
+        return false;
+    }
+
+    JsonObject device = doc["device"];
+
+    // validate the JSON data (checking for required fields)
+    if (!doc["device"]["ieee"].is<const char *>() ||
+        !doc["ep_id"].is<uint8_t>() ||
+        !doc["cluster_id"].is<uint16_t>() ||
+        !doc["attr_id"].is<uint16_t>() ||
+        !doc["value_type"].is<uint8_t>() ||
+        !doc["value"].is<uint32_t>()) {
+            
+        esplogW(TAG_LIB_ZIGBEE, "(unpack_attr)", "MQTT message is missing some required fields! Ignoring...");
+        device.clear();
+        doc.clear();
+        return false;
+    }
+
+    // Parse JSON into the structure
+    if (doc["device"]["short"].is<uint16_t>()) {
+        attr->short_addr = device["short"];
+    } else {
+        attr->short_addr = 0;
+    }
+    const char *ieee = device["ieee"];
+    sscanf(ieee, "%hhX:%hhX:%hhX:%hhX:%hhX:%hhX:%hhX:%hhX",
+           &attr->ieee_addr[7], &attr->ieee_addr[6], &attr->ieee_addr[5], &attr->ieee_addr[4],
+           &attr->ieee_addr[3], &attr->ieee_addr[2], &attr->ieee_addr[1], &attr->ieee_addr[0]);
+
+    attr->endpoint_id = doc["ep_id"];
+    attr->cluster_id = doc["cluster_id"];
+    attr->attr_id = doc["attr_id"];
+    attr->value_type = doc["value_type"];
+    attr->value = doc["value"];
+
+    memset(attr->manuf, 0, sizeof(attr->manuf));
+    memset(attr->name, 0, sizeof(attr->manuf));
+    memset(attr->type, 0, sizeof(attr->manuf));
+    attr->type_id = 0;
+    attr->device_id = 0;
+
+    doc.clear();
+    return true;
+}
+
 // ----------------------------------------------------------------------------------------------------------------------------------------------------
 
 /* void serialize_dev(iot_alarm_dev_load_t *dev, uint8_t *buffer, size_t *bytes) {
     if (dev == NULL) {
-        esplogW(" (libZigbee): Error: Message is nullptr!\n");
+        esplogW(TAG_LIB_ZIGBEE, "(serialize_dev)", "Error: Message is nullptr!");
         return;
     }
 
     if (buffer == NULL) {
-        esplogW(" (libZigbee): Error: Buffer is nullptr!\n");
+        esplogW(TAG_LIB_ZIGBEE, "(serialize_dev)", "Error: Buffer is nullptr!");
         return;
     }
 

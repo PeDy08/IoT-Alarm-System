@@ -40,7 +40,7 @@ bool waitForCorrectResponseGSM(const char * command, const char * expectedRespon
             return true;
         }
     }
-    esplogW(" (libGsm): GSM didnt responded in time!\n");
+    esplogW(TAG_LIB_GSM, "(waitForCorrectResponseGSM)", "GSM didnt responded in time!\n");
     return false;
 }
 
@@ -53,22 +53,22 @@ bool initSerialGSM() {
     digitalWrite(GSM_RST_PIN, HIGH);
     #endif
 
-    Serial.println("-------------------------------------------\nGSM INITIALISATION:\n");
-
     String response;
     String simCode;
     String registrationStatus;
     String signalQuality;
     int ret = true;
 
+    esplogI(TAG_LIB_GSM, "(initSerialGSM)", "GSM INITIALISATION!");
+
     // initialisation
     if (!ret || !waitForCorrectResponseGSM("AT", "OK", &response, 10000)) {
-        esplogW(" (libGsm): Failed finding GSM module!\n");
+        esplogW(TAG_LIB_GSM, "(initSerialGSM)", "Failed finding GSM module!");
         ret = false;
     } else {
-        esplogI(" (libGsm): GSM module found!\n");
+        esplogI(TAG_LIB_GSM, "(initSerialGSM)", "GSM module found!");
     } if (!ret || !waitForCorrectResponseGSM("AT+CCID", "OK", &response)) {
-        esplogW(" (libGsm): Failed finding SIM!\n");
+        esplogW(TAG_LIB_GSM, "(initSerialGSM)", "Failed finding SIM!");
         ret = false;
     } else {
         int startIdx = response.indexOf("AT+CCID");
@@ -77,16 +77,16 @@ bool initSerialGSM() {
             int simCodeEnd = response.indexOf("\r\n", simCodeStart);
             simCode = response.substring(simCodeStart, simCodeEnd);
         }
-        esplogI(" (libGsm): GSM SIM inserted!\n - SIM code: %s\n", simCode.c_str());
+        esplogI(TAG_LIB_GSM, "(initSerialGSM)", "GSM SIM inserted!\n - SIM code: %s", simCode.c_str());
     } if (!ret || !waitForCorrectResponseGSM("AT+CREG?", "0,1", &response, 60000)) {
-        esplogW(" (libGsm): Failed to register to network!\n");
+        esplogW(TAG_LIB_GSM, "(initSerialGSM)", "Failed to register to network!");
         ret = false;
     } else {
         int startIdx = response.indexOf("+CREG: ");
         if (startIdx >= 0) {registrationStatus = response.substring(startIdx + 7, response.indexOf("\r", startIdx));}
-        esplogI(" (libGsm): GSM SIM ready and registered!\n - registration status: %s\n", registrationStatus.c_str());
+        esplogI(TAG_LIB_GSM, "(initSerialGSM)", "GSM SIM ready and registered!\n - registration status: %s", registrationStatus.c_str());
     } if (!ret || !waitForCorrectResponseGSM("AT+CSQ", "OK", &response)) {
-        esplogW(" (libGsm): Failed to get GSM signal info!\n");
+        esplogW(TAG_LIB_GSM, "(initSerialGSM)", "Failed to get GSM signal info!");
         ret = false;
     } else {
         int startIdx = response.indexOf("+CSQ: ");
@@ -94,30 +94,28 @@ bool initSerialGSM() {
             int endIdx = response.indexOf(",", startIdx);
             signalQuality = response.substring(startIdx + 6, endIdx);
         }
-        esplogI(" (libGsm): GSM has signal!\n - signal quality: %s\n", signalQuality.c_str());
+        esplogI(TAG_LIB_GSM, "(initSerialGSM)", "GSM has signal!\n - signal quality: %s", signalQuality.c_str());
     }
 
     // setup
     if (!ret || !waitForCorrectResponseGSM("AT+CMGF=1", "OK", &response)) {
     } else {
-        esplogI(" (libGsm): GSM TEXT mode set successfully!\n");
+        esplogI(TAG_LIB_GSM, "(initSerialGSM)", "GSM TEXT mode set successfully!");
     }if (!waitForCorrectResponseGSM("AT+CMGDA=\"DEL ALL\"", "OK", &response)) {
         return false;
     } else {
-        esplogI(" (libGsm): All SMS deleted successfully!\n");
+        esplogI(TAG_LIB_GSM, "(initSerialGSM)", "All SMS deleted successfully!");
     }
     // if (!ret || !waitForCorrectResponseGSM("AT+CLIP=1", "OK", &response)) {
-    //     esplogW(" (libGsm): Failed to set up caller ID notifications!\n");
+    //     esplogW(TAG_LIB_GSM, "(initSerialGSM)", "Failed to set up caller ID notifications!");
     //     return false;
     // } else {
-    //     esplogI(" (libGsm): Caller ID notifications set up successfully!\n");
+    //     esplogI(TAG_LIB_GSM, "(initSerialGSM)", "Caller ID notifications set up successfully!");
     // } 
 
     if (!ret) {
-        Serial.println("\nINITIALISATION FAILED\n-------------------------------------------\n");
         return false;
     } else {
-        Serial.println("\nSUCCESSFULLY INITIALISED\n-------------------------------------------\n");
         return true;
     }
 }
@@ -127,23 +125,23 @@ bool sleepSerialGSM(bool sleep) {
     String response;
 
     if (sleep) {
-        esplogI(" (libGsm): Entering sleep mode!\n");
+        esplogI(TAG_LIB_GSM, "(sleepSerialGSM)", "Entering sleep mode!");
         if (waitForCorrectResponseGSM("AT+CSCLK=1", "OK", &response)) {
-            esplogI(" (libGsm): GSM module is now in sleep mode.\n");
+            esplogI(TAG_LIB_GSM, "(sleepSerialGSM)", "GSM module is now in sleep mode.");
             return true;
         } else {
-            esplogW(" (libGsm): Failed to put GSM module into sleep mode.\n");
+            esplogW(TAG_LIB_GSM, "(sleepSerialGSM)", "Failed to put GSM module into sleep mode.");
             return false;
         }
     } else {
-        esplogI(" (libGsm): Leaving sleep mode!\n");
+        esplogI(TAG_LIB_GSM, "(sleepSerialGSM)", "Leaving sleep mode!");
         SerialGSM.println("AT");
         delay(5000);
         if (waitForCorrectResponseGSM("AT+CSCLK=0", "OK", &response)) {
-            esplogI(" (libGsm): GSM module woke up from sleep.\n");
+            esplogI(TAG_LIB_GSM, "(sleepSerialGSM)", "GSM module woke up from sleep.");
             return true;
         } else {
-            esplogW(" (libGsm): Failed to wake up GSM module.\n");
+            esplogW(TAG_LIB_GSM, "(sleepSerialGSM)", "Failed to wake up GSM module.");
             return false;
         }
     }
@@ -155,24 +153,24 @@ bool powerControlSerialGSM(bool power) {
     String response;
 
     if (!power) {
-        esplogI(" (libGsm): Powering off GSM module!\n");
+        esplogI(TAG_LIB_GSM, "(powerControlSerialGSM)", "Powering off GSM module!");
         if (waitForCorrectResponseGSM("AT+CPOWD=1", "NORMAL POWER DOWN", &response)) {
-            esplogI(" (libGsm): GSM module powered off successfully.\n");
+            esplogI(TAG_LIB_GSM, "(powerControlSerialGSM)", "GSM module powered off successfully.");
             return true;
         } else {
-            esplogW(" (libGsm): Failed to power off the GSM module.\n");
+            esplogW(TAG_LIB_GSM, "(powerControlSerialGSM)", "Failed to power off the GSM module.");
             return false;
         }
     } else {
-        esplogI(" (libGsm): Powering on GSM module!\n");
+        esplogI(TAG_LIB_GSM, "(powerControlSerialGSM)", "Powering on GSM module!");
         SerialGSM.println("AT");
         delay(1000);
 
         if (waitForCorrectResponseGSM("AT", "OK", &response)) {
-            esplogI(" (libGsm): GSM module powered on successfully.\n");
+            esplogI(TAG_LIB_GSM, "(powerControlSerialGSM)", "GSM module powered on successfully.");
             return true;
         } else {
-            esplogW(" (libGsm): Failed to power on the GSM module. Check hardware reset.\n");
+            esplogW("TAG_LIB_GSM, "(powerControlSerialGSM)", Failed to power on the GSM module. Check hardware reset.");
             return false;
         }
     }
@@ -181,7 +179,7 @@ bool powerControlSerialGSM(bool power) {
 
 #ifdef GSM_RST_PIN
 bool resetSerialGSM() {
-    esplogI(" (libGsm): Reseting GSM module!\n");
+    esplogI(TAG_LIB_GSM, "(resetSerialGSM)", "Reseting GSM module!");
 
     SerialGSM.end();
     digitalWrite(GSM_RST_PIN, LOW);
@@ -194,14 +192,14 @@ bool resetSerialGSM() {
 bool sendSmsSerialGSM(const char *phoneNumber, const char *message) {
     String response;
 
-    esplogI(" (libGsm): Sending a SMS message!\n - %s\n - %s\n", phoneNumber, message);
+    esplogI(TAG_LIB_GSM, "(sendSmsSerialGSM)", "Sending a SMS message!\n - %s\n - %s", phoneNumber, message);
 
     String smsCommand = "AT+CMGS=\"";
     smsCommand += phoneNumber;
     smsCommand += "\"";
     
     if (!waitForCorrectResponseGSM(smsCommand.c_str(), ">", &response)) {
-        esplogW(" (libGsm): Failed to send phone number for SMS!\n");
+        esplogW(TAG_LIB_GSM, "(sendSmsSerialGSM)", "Failed to send phone number for SMS!");
         return false;
     }
 
@@ -209,10 +207,10 @@ bool sendSmsSerialGSM(const char *phoneNumber, const char *message) {
     SerialGSM.write(26);
 
     if (waitForCorrectResponseGSM("", "OK", &response, 10000)) {
-        esplogI(" (libGsm): SMS successfully sent!\n");
+        esplogI(TAG_LIB_GSM, "(sendSmsSerialGSM)", "SMS successfully sent!");
         return true;
     } else {
-        esplogW(" (libGsm): Failed to send SMS!\n");
+        esplogW(TAG_LIB_GSM, "(sendSmsSerialGSM)", "Failed to send SMS!");
         return false;
     }
 }
@@ -221,7 +219,7 @@ bool receiveSmsSerialGSM(SmsInfo* sms) {
     String response;
 
     if (!waitForCorrectResponseGSM("AT+CMGL", "OK", &response)) {
-        esplogW(" (libGsm): Failed to check for received SMS!\n");
+        esplogW(TAG_LIB_GSM, "(receiveSmsSerialGSM)", "Failed to check for received SMS!");
         return false;
     }
 
@@ -230,14 +228,14 @@ bool receiveSmsSerialGSM(SmsInfo* sms) {
     if (sms->index < 0) {
         return false;
     } else {
-        esplogI(" (libGsm): New SMS received!\n");
+        esplogI(TAG_LIB_GSM, "(receiveSmsSerialGSM)", "New SMS received!");
 
         String deleteCommand = "AT+CMGD=" + String(sms->index);
         String deleteResponse;
         if (waitForCorrectResponseGSM(deleteCommand.c_str(), "OK", &deleteResponse)) {
-            esplogI(" (libGsm): New SMS was successfully saved to struct and deleted from GSM!\n");
+            esplogI(TAG_LIB_GSM, "(receiveSmsSerialGSM)", "New SMS was successfully saved to struct and deleted from GSM!");
         } else {
-            esplogW(" (libGsm): Failed to delete SMS!\n");
+            esplogW(TAG_LIB_GSM, "(receiveSmsSerialGSM)", "Failed to delete SMS!");
         }
         return true;
     }
@@ -247,7 +245,7 @@ bool receiveSmsSerialGSM(SmsInfo* sms) {
 bool startCallSerialGSM(const char *phoneNumber, unsigned long hangUpDelay, unsigned long noAnswerTimeout) {
     String response;
     
-    esplogI(" (libGsm): Calling number!\n - %s\n", phoneNumber);
+    esplogI(TAG_LIB_GSM, "(startCallSerialGSM)", "Calling number!\n - %s", phoneNumber);
 
     // Initiate the call
     String callCommand = "ATD";
@@ -255,10 +253,10 @@ bool startCallSerialGSM(const char *phoneNumber, unsigned long hangUpDelay, unsi
     callCommand += ";";
 
     if (!waitForCorrectResponseGSM(callCommand.c_str(), "OK", &response)) {
-        esplogW(" (libGsm): Failed to initiate the call!\n");
+        esplogW(TAG_LIB_GSM, "(startCallSerialGSM)", "Failed to initiate the call!");
         return false;
     } else {
-        esplogI(" (libGsm): Call initiated successfully!\n");
+        esplogI(TAG_LIB_GSM, "(startCallSerialGSM)", "Call initiated successfully!");
     }
 
     unsigned long startTime = millis();
@@ -268,7 +266,7 @@ bool startCallSerialGSM(const char *phoneNumber, unsigned long hangUpDelay, unsi
     while (!callEnded) {
         // Periodically send AT+CLCC to check the call status
         if (!waitForCorrectResponseGSM("AT+CLCC", "OK", &response)) {
-            esplogW(" (libGsm): No response received for AT+CLCC command!\n");
+            esplogW(TAG_LIB_GSM, "(startCallSerialGSM)", "No response received for AT+CLCC command!");
             waitForCorrectResponseGSM("ATH", "OK", &response);
             return false;
         }
@@ -278,51 +276,51 @@ bool startCallSerialGSM(const char *phoneNumber, unsigned long hangUpDelay, unsi
 
             switch (callInfo.stat) {
                 case 0:  // Call is active
-                    esplogI("Calling...");
+                    esplogI(TAG_LIB_GSM, "(startCallSerialGSM)", "Calling...");
                     callConnected = true;
                     break;
                 case 1:  // Held
-                    esplogI("Held...");
+                    esplogI(TAG_LIB_GSM, "(startCallSerialGSM)", "Held...");
                     break;
                 case 2:  // Dialing
-                    esplogI("Dialing...");
+                    esplogI(TAG_LIB_GSM, "(startCallSerialGSM)", "Dialing...");
                     break;
                 case 3:  // Alerting (ringing)
-                    esplogI("Ringing...");
+                    esplogI(TAG_LIB_GSM, "(startCallSerialGSM)", "Ringing...");
                     break;
                 case 4:  // Incoming call (not applicable here)
-                    esplogI("Incoming call (should not happen).");
+                    esplogI(TAG_LIB_GSM, "(startCallSerialGSM)", "Incoming call (should not happen).");
                     break;
                 case 6:  // Call disconnected
-                    esplogI("Call disconnected by the remote party.");
+                    esplogI(TAG_LIB_GSM, "(startCallSerialGSM)", "Call disconnected by the remote party.");
                     callEnded = true;
                     break;
                 default:
-                    esplogI("Unknown call status.");
+                    esplogI(TAG_LIB_GSM, "(startCallSerialGSM)", "Unknown call status.");
                     break;
             }
         }
 
         // Check if the call has timed out without being answered
         if (!callConnected && (millis() - startTime >= noAnswerTimeout)) {
-            esplogI(" (libGsm): No answer, hanging up the call!\n");
+            esplogI(TAG_LIB_GSM, "(startCallSerialGSM)", "No answer, hanging up the call!");
             waitForCorrectResponseGSM("ATH", "OK", &response);
             callEnded = true;
         }
 
         // If the call is connected, hang up after the specified delay
         if (callConnected && (millis() - startTime >= hangUpDelay)) {
-            esplogI(" (libGsm): Hanging up the call after the delay!\n");
+            esplogI(TAG_LIB_GSM, "(startCallSerialGSM)", "Hanging up the call after the delay!");
             waitForCorrectResponseGSM("ATH", "OK", &response);
             callEnded = true;
         }
     }
 
     if (callConnected) {
-        esplogI(" (libGsm): Call ended successfully!\n");
+        esplogI(TAG_LIB_GSM, "(startCallSerialGSM)", "Call ended successfully!");
         return true;
     } else {
-        esplogW(" (libGsm): Call was not connected or failed!\n");
+        esplogW(TAG_LIB_GSM, "(startCallSerialGSM)", "Call was not connected or failed!");
         return false;
     }
 }
@@ -331,7 +329,7 @@ bool receiveCallSerialGSM(CallInfo* call) {
     String response;
 
     if (!waitForCorrectResponseGSM("AT+CLCC", "OK", &response)) {
-        esplogW(" (libGsm): Failed to check for incoming calls!\n");
+        esplogW(TAG_LIB_GSM, "(receiveCallSerialGSM)", "Failed to check for incoming calls!");
         return false;
     }
 
@@ -340,13 +338,13 @@ bool receiveCallSerialGSM(CallInfo* call) {
     if (call->id < 0) {
         return false;
     } else {
-        esplogI(" (libGsm): Incoming call detected!\n");
+        esplogI(TAG_LIB_GSM, "(receiveCallSerialGSM)", "Incoming call detected!");
 
         String hangupResponse;
         if (waitForCorrectResponseGSM("ATH", "OK", &hangupResponse)) {
-            esplogI(" (libGsm): Incoming call rejected successfully!\n");
+            esplogI(TAG_LIB_GSM, "(receiveCallSerialGSM)", "Incoming call rejected successfully!");
         } else {
-            esplogW(" (libGsm): Failed to reject the incoming call!\n");
+            esplogW(TAG_LIB_GSM, "(receiveCallSerialGSM)", "Failed to reject the incoming call!");
         }
         return true;
     }

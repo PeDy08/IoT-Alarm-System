@@ -9,15 +9,25 @@
 #define LIBZIGBEE_H_DEFINITION
 
 #include <Arduino.h>
+#include <ArduinoJson.h>
 #include <HardwareSerial.h>
+
+#include "utils.h"
+#include "mainAppDefinitions.h"
+
+#ifdef EINK
+#include "libDisplayEINK.h"
+#endif
+
+#ifdef LCD
+#include "libDisplayLCD.h"
+#endif
 
 #include "string.h"
 #include "driver/gpio.h"
 #include "driver/uart.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-
-#include "utils.h"
 
 #define ZIGBEE_RX_PIN 25
 #define ZIGBEE_TX_PIN 26
@@ -30,6 +40,10 @@
 #define UART UART_NUM_2
 
 extern HardwareSerial SerialZigbee;
+
+extern TaskHandle_t handleTaskZigbee;
+extern g_vars_t g_vars;
+extern g_config_t g_config;
 
 extern const int RX_BUF_SIZE;
 extern const int TX_BUF_SIZE;
@@ -185,7 +199,7 @@ typedef struct {
     char type[50];
     uint32_t type_id;
     esp_zb_ieee_addr_t ieee_addr;
-    uint16_t short_addr;
+    uint16_t short_addr;    
     uint8_t device_id;
     uint8_t endpoint_id;
     uint16_t cluster_id;
@@ -220,16 +234,19 @@ bool initSerialZigbee();
 
 bool zigbeeReset();
 bool zigbeeFactory();
-bool zigbeeOpen(uint8_t duration);
+bool zigbeeCount();
+bool zigbeeOpen(uint8_t duration = 180);
 bool zigbeeClose();
 bool zigbeeClear();
-bool zigbeeAttrRead(esp_zb_ieee_addr_t ieee_addr, uint16_t short_addr, uint8_t endpoint_id, uint16_t cluster_id, uint16_t attr_id, esp_zb_zcl_attr_type_t value_type, uint32_t value);
-bool zigbeeAttrWrite(esp_zb_ieee_addr_t ieee_addr, uint16_t short_addr, uint8_t endpoint_id, uint16_t cluster_id, uint16_t attr_id, esp_zb_zcl_attr_type_t value_type, uint32_t value);
+bool zigbeeAttrRead(iot_alarm_attr_load_t * attr);
+bool zigbeeAttrWrite(iot_alarm_attr_load_t * attr);
+bool zigbeeAttrReadWriteHandler(iot_alarm_attr_load_t * attr);
+bool zigbeeAttrReportHandler(iot_alarm_attr_load_t * attr);
 
 // *********************************************************************************************************************
 
 void serialize_message(iot_alarm_message_t *msg, uint8_t *buffer, size_t *bytes);
-void deserialize_message(iot_alarm_message_t **msg, uint8_t *buffer);
+void deserialize_message(iot_alarm_message_t **msg, uint8_t *buffer, size_t buffer_len);
 
 iot_alarm_message_t * create_message(message_direction_t dir, message_status_t st, message_type_t id, uint32_t length, const char* load);
 void destroy_message(iot_alarm_message_t **msg);
@@ -243,8 +260,12 @@ int send_attr(uart_port_t uart, uint8_t* tx_buffer, iot_alarm_attr_load_t * load
 // int send_dev(uart_port_t uart, uint8_t* tx_buffer, iot_alarm_dev_load_t * load, message_type_t id);
 
 void serialize_attr(iot_alarm_attr_load_t *attr, char *buffer, size_t *bytes);
-void deserialize_attr(iot_alarm_attr_load_t **attr, uint8_t *buffer);
+void deserialize_attr(iot_alarm_attr_load_t **attr, uint8_t *buffer, size_t buffer_len);
 iot_alarm_attr_load_t * create_attr(const char * manuf, const char * name, const char * type, uint32_t type_id, esp_zb_ieee_addr_t ieee_addr, uint16_t short_addr, uint8_t device_id, uint8_t endpoint_id, uint16_t cluster_id, uint16_t attr_id, esp_zb_zcl_attr_type_t value_type, uint32_t value);
 void destroy_attr(iot_alarm_attr_load_t **attr);
+bool compare_attr(iot_alarm_attr_load_t attr1, iot_alarm_attr_load_t attr2);
+void copy_attr(iot_alarm_attr_load_t * src, iot_alarm_attr_load_t * dst);
+bool pack_attr(iot_alarm_attr_load_t * attr, String * jsonStr);
+bool unpack_attr(iot_alarm_attr_load_t * attr, String jsonStr);
 
 #endif

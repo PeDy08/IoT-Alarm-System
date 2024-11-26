@@ -102,7 +102,10 @@ enum selectionInit {
 // selection menu for STATE_SETUP
 enum selectionSetup {
     SELECTION_SETUP_START_STA,
-    SELECTION_SETUP_SET_PIN,
+    SELECTION_SETUP_OPEN_ZB,
+    SELECTION_SETUP_CLOSE_ZB,
+    SELECTION_SETUP_CLEAR_ZB,
+    SELECTION_SETUP_RESET_ZB,
     SELECTION_SETUP_ADD_RFID,
     SELECTION_SETUP_DEL_RFID,
     SELECTION_SETUP_CHECK_RFID,
@@ -144,10 +147,13 @@ inline const char* getSelectionText(States state, int selection, bool pretty = f
         case STATE_SETUP: {
             switch(static_cast<selectionSetup>(selection)) {
                 case SELECTION_SETUP_START_STA: return pretty ? "1. start WiFi AP" : "SELECTION_SETUP_START_STA";
-                case SELECTION_SETUP_SET_PIN: return pretty ? "2. set PIN" : "SELECTION_SETUP_SET_PIN";
+                case SELECTION_SETUP_OPEN_ZB: return pretty ? "2. open ZIGBEE" : "SELECTION_SETUP_OPEN_ZB";
+                case SELECTION_SETUP_CLOSE_ZB: return pretty ? "2. close ZIGBEE" : "SELECTION_SETUP_CLOSE_ZB";
+                case SELECTION_SETUP_CLEAR_ZB: return pretty ? "2. clear ZIGBEE" : "SELECTION_SETUP_CLEAR_ZB";
+                case SELECTION_SETUP_RESET_ZB: return pretty ? "2. reset ZIGBEE" : "SELECTION_SETUP_RESET_ZB";
                 case SELECTION_SETUP_ADD_RFID: return pretty ? "3. add RFID" : "SELECTION_SETUP_ADD_RFID";
-                case SELECTION_SETUP_DEL_RFID: return pretty ? "4. delete RFID" : "SELECTION_SETUP_DEL_RFID";
-                case SELECTION_SETUP_CHECK_RFID: return pretty ? "5 check RFID" : "SELECTION_SETUP_CHECK_RFID";
+                case SELECTION_SETUP_DEL_RFID: return pretty ? "3. delete RFID" : "SELECTION_SETUP_DEL_RFID";
+                case SELECTION_SETUP_CHECK_RFID: return pretty ? "3 check RFID" : "SELECTION_SETUP_CHECK_RFID";
                 case SELECTION_SETUP_HARD_RESET: return pretty ? "6. hard reset" : "SELECTION_SETUP_HARD_RESET";
                 case SELECTION_SETUP_RETURN: return pretty ? "7. return" : "SELECTION_SETUP_RETURN";
                 default: return "Unknown Selection";
@@ -204,6 +210,8 @@ struct g_vars_t {
     String pin;                         // typed PIN code (user input)
     int attempts;                       // failed attempts for PIN (user input)
     int alarm_events;                   // recorded alarm events (zigbee sensors)
+    bool alarm_event_fire;              // detected fire alarm event (zigbee sensors)
+    bool alarm_event_water;             // detected water leakage alarm event (zigbee sensors)
     unsigned long time_temp;            // temporary time variable (for countdowns)
 };
 
@@ -218,15 +226,21 @@ struct g_config_t {
     String wifi_gtw;                    // wifi gateway address
     String wifi_sbnt;                   // wifi subnet mask
 
-    // String mqtt_broker;
-    // String mqtt_topic;
+    bool mqtt_tls;
+    String mqtt_broker;
+    uint16_t mqtt_port;
+    String mqtt_id;
+    String mqtt_topic;
+    String mqtt_username;
+    String mqtt_password;
+    String mqtt_cert;
 
     int alarm_countdown_s;              // countdown before alarm is started after locking process
     int alarm_e_countdown_s;            // TODO add new param to app - countdown before alarm start emergency notifications after 'alarm_e_threshold' is reached
     int alarm_w_threshold;              // TODO add new param to app - number of alarm events before warning state is triggered
     int alarm_e_threshold;              // TODO add new param to app - number of alarm events before emergency state is triggered
 
-    String alarm_telephones;            // TODO add new param to app - alarm notifiactions telephone numbers
+    String alarm_telephone;             // TODO add new param to app - alarm notifiactions telephone numbers
 };
 
 #endif

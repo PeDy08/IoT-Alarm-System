@@ -102,6 +102,45 @@ void rfidScreenD(g_vars_t * g_vars, const char * uid) {
     delay(2500);
 }
 
+void zigbeeScreenO(g_vars_t * g_vars, g_config_t * g_config, uint8_t duration) {
+    char string[48];
+    sprintf(string, "network joining is now open for %d seconds!", duration);
+    notificationScreenTemplate("ZIGBEE open", string);
+    waitReady();
+    vTaskDelay(2500 / portTICK_PERIOD_MS);
+    loadScreen(g_vars, g_config);
+}
+
+void zigbeeScreenC(g_vars_t * g_vars, g_config_t * g_config) {
+    notificationScreenTemplate("ZIGBEE closed", "network joining is now closed!");
+    waitReady();
+    vTaskDelay(2500 / portTICK_PERIOD_MS);
+    loadScreen(g_vars, g_config);
+}
+
+void zigbeeScreenD(g_vars_t * g_vars, g_config_t * g_config) {
+    notificationScreenTemplate("ZIGBEE cleared", "network has been cleaned!");
+    waitReady();
+    vTaskDelay(2500 / portTICK_PERIOD_MS);
+    loadScreen(g_vars, g_config);
+}
+
+void zigbeeScreenR(g_vars_t * g_vars, g_config_t * g_config) {
+    notificationScreenTemplate("ZIGBEE report", "alarm event has been triggered!");
+    waitReady();
+    vTaskDelay(2500 / portTICK_PERIOD_MS);
+    loadScreen(g_vars, g_config);
+}
+
+void zigbeeScreenN(g_vars_t * g_vars, g_config_t * g_config, uint8_t device_count) {
+    char string[32];
+    sprintf(string, "%d devices are connected!", device_count);
+    notificationScreenTemplate("ZIGBEE count", string);
+    waitReady();
+    vTaskDelay(2500 / portTICK_PERIOD_MS);
+    loadScreen(g_vars, g_config);
+}
+
 void updateScreen(g_vars_t * g_vars, g_config_t * g_config, int param) {
 
     if (disable_update) {
@@ -113,39 +152,63 @@ void updateScreen(g_vars_t * g_vars, g_config_t * g_config, int param) {
 
     switch (param) {
         case UPDATE_SELECTION:
-        // selection
-        display.setPartialWindow(10, 32, 20, 80);
-        display.firstPage();
-        do {
-            display.fillScreen(GxEPD_WHITE);
-            updateSelection(getSelectionId(g_vars->state, g_vars->selection));
-        } while (display.nextPage());
-
-        // special selections for state STATE_SETUP
-        if (g_vars->state == STATE_SETUP) {
-            display.setPartialWindow(30, 72, 150, 16);
+            // selection
+            display.setPartialWindow(10, 32, 20, 80);
             display.firstPage();
             do {
                 display.fillScreen(GxEPD_WHITE);
-                u8g2Fonts.setFont(u8g2_font_courB10_tr);
-                u8g2Fonts.setCursor(36, 83);
-                switch (g_vars->selection) {
-                    case SELECTION_SETUP_ADD_RFID:
-                        u8g2Fonts.print("RFID add");
-                        break;
-                    case SELECTION_SETUP_DEL_RFID:
-                        u8g2Fonts.print("RFID remove");
-                        break;
-                    case SELECTION_SETUP_CHECK_RFID:
-                        u8g2Fonts.print("RFID check");
-                        break;
-                    
-                    default:
-                        u8g2Fonts.print("RFID setup");
-                        break;
-                }
+                updateSelection(getSelectionId(g_vars->state, g_vars->selection));
             } while (display.nextPage());
-        }
+
+            // special selections for state STATE_SETUP
+            // TODO add the selections for zigbee
+            if (g_vars->state == STATE_SETUP) {
+                display.setPartialWindow(30, 48, 150, 40);
+                // display.setPartialWindow(30, 72, 150, 16);
+                display.firstPage();
+                do {
+                    display.fillScreen(GxEPD_WHITE);
+                    u8g2Fonts.setFont(u8g2_font_courB10_tr);
+
+                    u8g2Fonts.setCursor(36, 65);
+                    switch (g_vars->selection) {
+                        case SELECTION_SETUP_OPEN_ZB:
+                            u8g2Fonts.print("ZIGBEE open");
+                            break;
+                        case SELECTION_SETUP_CLOSE_ZB:
+                            u8g2Fonts.print("ZIGBEE close");
+                            break;
+                        case SELECTION_SETUP_CLEAR_ZB:
+                            u8g2Fonts.print("ZIGBEE clear");
+                            break;
+                        case SELECTION_SETUP_RESET_ZB:
+                            u8g2Fonts.print("ZIGBEE reset");
+                            break;
+                        
+                        default:
+                            u8g2Fonts.print("ZIGBEE setup");
+                            break;
+                    }
+
+
+                    u8g2Fonts.setCursor(36, 83);
+                    switch (g_vars->selection) {
+                        case SELECTION_SETUP_ADD_RFID:
+                            u8g2Fonts.print("RFID add");
+                            break;
+                        case SELECTION_SETUP_DEL_RFID:
+                            u8g2Fonts.print("RFID remove");
+                            break;
+                        case SELECTION_SETUP_CHECK_RFID:
+                            u8g2Fonts.print("RFID check");
+                            break;
+                        
+                        default:
+                            u8g2Fonts.print("RFID setup");
+                            break;
+                    }
+                } while (display.nextPage());
+            }
             break;
 
         case UPDATE_STATUS:
@@ -346,7 +409,7 @@ void loadScreen(g_vars_t * g_vars, g_config_t * g_config, bool reboot) {
             break;
 
         case STATE_SETUP:
-            menuScreenTemplate(getStateText(g_vars->state, true), selection_id, false, "WiFi setup", "PIN setup", "RFID setup", "hard reset", g_vars->time.c_str(), g_vars->date.c_str(), g_vars->wifi_strength, g_vars->gsm_strength, g_vars->battery_level);
+            menuScreenTemplate(getStateText(g_vars->state, true), selection_id, false, "WiFi setup", "ZIGBEE setup", "RFID setup", "hard reset", g_vars->time.c_str(), g_vars->date.c_str(), g_vars->wifi_strength, g_vars->gsm_strength, g_vars->battery_level);
             break;
 
         case STATE_SETUP_AP:
@@ -431,7 +494,7 @@ void loadScreen(g_vars_t * g_vars, g_config_t * g_config, bool reboot) {
 
         default:
             // lcd.print("State was not recognised!");
-            esplogW("Unrecognised state for loading display data!\n");
+            esplogW(TAG_LIB_DISPLAY, "(loadScreen)", "Unrecognised state for loading display data!\n");
             break;
     }
 
@@ -863,7 +926,10 @@ int getSelectionId(States state, int selection) {
         case STATE_SETUP:
         switch (selection) {
             case SELECTION_SETUP_START_STA:             return 0;
-            case SELECTION_SETUP_SET_PIN:               return 1;
+            case SELECTION_SETUP_OPEN_ZB:               return 1;
+            case SELECTION_SETUP_CLOSE_ZB:              return 1;
+            case SELECTION_SETUP_CLEAR_ZB:              return 1;
+            case SELECTION_SETUP_RESET_ZB:              return 1;
             case SELECTION_SETUP_ADD_RFID:              return 2;
             case SELECTION_SETUP_DEL_RFID:              return 2;
             case SELECTION_SETUP_CHECK_RFID:            return 2;
