@@ -17,6 +17,7 @@
 #include "libGsm.h"
 #include "libZigbee.h"
 #include "libMqtt.h"
+#include "libPeripherals.h"
 
 #ifdef EINK
 #include "libDisplayEINK.h"
@@ -40,10 +41,8 @@ extern NTPClient timeClient;
 extern g_vars_t g_vars;
 extern g_config_t g_config;
 
-void setup();
-void loop();
-
 // WORKING TASKS
+
 extern TaskHandle_t handleTaskMenu;
 void rtosMenu(void* parameters);
 
@@ -53,8 +52,8 @@ void rtosAlarm(void* testmode);
 extern TaskHandle_t handleTaskKeypad;
 void rtosKeypad(void* parameters);
 
-extern TaskHandle_t handleTaskNet;
-void rtosNet(void* parameters);
+extern TaskHandle_t handleTaskWiFi;
+void rtosWiFi(void* parameters);
 
 extern TaskHandle_t handleTaskDatetime;
 void rtosDatetime(void* parameters);
@@ -68,8 +67,8 @@ void rtosRfid(void* parameters);
 extern TaskHandle_t handleTaskDisplay;
 void rtosDisplay(void* parameters);
 
-extern TaskHandle_t handleTaskGsm;
-void rtosGsm(void* parameters);
+extern TaskHandle_t handleTaskNotifications;
+void rtosNotifications(void* parameters);
 
 extern TaskHandle_t handleTaskZigbee;
 void rtosZigbee(void* parameters);
@@ -78,11 +77,54 @@ extern TaskHandle_t handleTaskMqtt;
 void rtosMqtt(void* parameters);
 
 // REFRESH TASKS
+
 extern TaskHandle_t handleTaskMenuRefresh;
 void rtosMenuRefresh(void* parameters);
 
 extern TaskHandle_t handleTaskRfidRefresh;
 void rtosRfidRefresh(void* parameters);
+
+/**
+ * @brief Initializes hardware peripherals, configurations, and FreeRTOS tasks for the application.
+ *
+ * This function performs the following steps:
+ *  - Initializes serial communication.
+ *  - Sets up I2C and SPI communication buses.
+ *  - Mounts the SD card and checks for availability.
+ *  - Clears previous log files from the SD card.
+ *  - Loads the device configuration from the SD card.
+ *  - Initializes the display (EINK or LCD).
+ *  - Initializes the keypad, output devices, GSM module, Zigbee module, and RFID reader.
+ *  - Starts an access point (AP) setup mode if no Wi-Fi SSID is configured.
+ *  - Creates FreeRTOS queues and tasks for handling peripherals and system functions.
+ *
+ * @note The function halts execution in a blocking loop if critical initializations fail, such as mounting the SD card.
+ *
+ * Tasks Created:
+ *  - `keypad`: Handles keypad input.
+ *  - `rfid`: Manages RFID reader operations.
+ *  - `display`: Controls display updates.
+ *  - `notifications`: Manages notifications.
+ *  - `mqtt`: Manages MQTT communication (pinned to the main core).
+ *  - `datetime`: Manages date and time synchronization (pinned to the main core).
+ *  - `wifi`: Handles Wi-Fi connectivity (pinned to the main core).
+ *  - `menurefresh`: Refreshes the menu display.
+ *  - `rfidrefresh`: Refreshes RFID reader status.
+ *  - `menu`: Main application menu task.
+ *
+ * @warning If critical peripherals fail to initialize (e.g., keypad, output devices, or GSM), the device logs an error and reboots.
+ */
+void setup();
+
+/**
+ * @brief Main loop function for the application.
+ *
+ * The `loop` function delays execution indefinitely to prevent the Arduino main loop
+ * from interfering with the FreeRTOS tasks running in the background.
+ *
+ * @note The application logic is managed entirely by FreeRTOS tasks, making this function effectively idle.
+ */
+void loop();
 
 /**
  * @brief Sets various global variables depending on the provided arguments. This function modifies
@@ -133,4 +175,5 @@ inline void setState(States state = STATE_MAX, int selection = -1, int selection
   }
 
   g_vars.refresh_display.refresh = true;
+  lightLedByState();
 }

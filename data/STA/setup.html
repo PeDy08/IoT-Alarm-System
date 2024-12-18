@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>ESP Setup</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" type="text/css" href="style.css">
+</head>
+<body>
+  <div class="topnav">
+    <h1>ESP Setup</h1>
+  </div>
+  <div class="content">
+    <div class="card-grid">
+      <div class="card">
+        <form action="/setup" method="POST">
+          <p>
+            <label for="mqtt_tls">MQTT TLS</label>
+            <input type="number" id ="mqtt_tls" name="mqtt_tls" value="1" min="0" max="1"><br>
+
+            <label for="mqtt_brkr">MQTT Broker</label>
+            <input type="text" id ="mqtt_brkr" name="mqtt_brkr" placeholder="mqtt.broker.local"><br>
+
+            <label for="mqtt_port">MQTT Port</label>
+            <input type="number" id ="mqtt_port" name="mqtt_port" placeholder="1883"><br>
+
+            <label for="mqtt_id">MQTT ID</label>
+            <input type="text" id ="mqtt_id" name="mqtt_id" placeholder="IoT_Alarm_ESP32"><br>
+
+            <label for="mqtt_tpc">MQTT Topic</label>
+            <input type="text" id ="mqtt_tpc" name="mqtt_tpc" placeholder="IoT_Alarm"><br>
+
+            <label for="mqtt_usrnm">MQTT Username</label>
+            <input type="text" id ="mqtt_usrnm" name="mqtt_usrnm" placeholder="usrnm"><br>
+
+            <label for="mqtt_pswd">MQTT Password</label>
+            <input type="password" id ="mqtt_pswd" name="mqtt_pswd" placeholder="pswd"><br>
+
+            <label for="mqtt_cert">TLS certificate</label>
+            <input type="text" id ="mqtt_cert" name="mqtt_cert" placeholder="-----BEGIN CERTIFICATE-----
+            MIIF...
+            -----END CERTIFICATE-----"><br>
+
+            <label for="countdown">Alarm Countdown (sec)</label>
+            <input type="number" id ="countdown" name="countdown" placeholder="60" min="10" max="255"><br>
+
+            <label for="countdown_e">Alarm Emergency Countdown (sec)</label>
+            <input type="number" id ="countdown_e" name="countdown_e" placeholder="60" min="10" max="255"><br>
+
+            <label for="threshold_w">Alarm Warning Threshold (events)</label>
+            <input type="number" id ="threshold_w" name="threshold_w" placeholder="5" min="1" max="50"><br>
+
+            <label for="threshold_e">Alarm Emergency Threshold (events)</label>
+            <input type="number" id ="threshold_e" name="threshold_e" placeholder="7" min="1" max="50"><br>
+
+            <label for="telephone">Alarm Emergency Number</label>
+            <input type="tel" id ="telephone" name="telephone" placeholder="+420123456789" pattern="+[0-9]{3}[0-9]{9}"><br>
+
+            <input type ="submit" value ="Submit">
+          </p>
+        </form>
+      </div>
+    </div>

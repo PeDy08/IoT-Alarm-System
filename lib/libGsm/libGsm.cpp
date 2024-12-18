@@ -1,5 +1,8 @@
 #include "libGsm.h"
 
+extern g_vars_t * g_vars_ptr;
+extern g_config_t * g_config_ptr;
+
 HardwareSerial SerialGSM(1);
 
 void updateSerialGSM() {
@@ -12,20 +15,7 @@ void updateSerialGSM() {
     }
 }
 
-/**
- * @brief Sends an AT command to the GSM module and waits for the expected response.
- * 
- * This function repeatedly sends an AT command to the GSM module and checks if the
- * expected response is received. If the response contains the expected string, it
- * returns true; otherwise, it will keep trying until a timeout occurs.
- * 
- * @param command The AT command to send to the GSM module.
- * @param expectedResponse The expected response to the AT command.
- * @param receivedResponse Pointer to a String that will store the received response.
- * @param timeout The time (in milliseconds) to wait for the response (default is 6000 ms).
- * @return true if the expected response was received, false if the timeout occurred.
- */
-bool waitForCorrectResponseGSM(const char * command, const char * expectedResponse, String * receivedResponse, unsigned long timeout = 5000) {
+bool waitForCorrectResponseGSM(const char * command, const char * expectedResponse, String * receivedResponse, unsigned long timeout) {
     while (SerialGSM.available()) {
         SerialGSM.read();
     }
@@ -51,6 +41,18 @@ bool initSerialGSM() {
     #ifdef GSM_RST_PIN
     pinMode(GSM_RST_PIN, OUTPUT);
     digitalWrite(GSM_RST_PIN, HIGH);
+    #endif
+
+    #ifdef GSM_PWR_PIN
+    // i guess its empty in this lib?
+    #endif
+
+    #ifdef GSM_RI_PIN
+    // i guess its empty in this lib?
+    #endif
+
+    #ifdef GSM_DTR_PIN
+    // i guess its empty in this lib?
     #endif
 
     String response;
@@ -189,6 +191,32 @@ bool resetSerialGSM() {
 }
 #endif
 
+bool getRssiGSM(int * rssi, String * rssi_str) {
+    String response;
+    String signalQuality;
+
+    if (!waitForCorrectResponseGSM("AT+CSQ", "OK", &response)) {
+        esplogW(TAG_LIB_GSM, "(getRssiGSM)", "Failed to get GSM signal info!");
+        return false;
+    } else {
+        int startIdx = response.indexOf("+CSQ: ");
+        if (startIdx >= 0) {
+            int endIdx = response.indexOf(",", startIdx);
+            signalQuality = response.substring(startIdx + 6, endIdx);
+            
+            if (rssi != NULL) {
+                *rssi = response.substring(startIdx + 6, endIdx).toInt();
+            }
+
+            if (rssi_str != NULL) {
+                *rssi_str = String(signalQuality.c_str());
+            }
+        }
+        esplogI(TAG_LIB_GSM, "(getRssiGSM)", "GSM RSSI: %d (str: %s)", signalQuality.toInt(), signalQuality.c_str());
+        return true;
+    }
+}
+
 bool sendSmsSerialGSM(const char *phoneNumber, const char *message) {
     String response;
 
@@ -240,7 +268,6 @@ bool receiveSmsSerialGSM(SmsInfo* sms) {
         return true;
     }
 }
-
 
 bool startCallSerialGSM(const char *phoneNumber, unsigned long hangUpDelay, unsigned long noAnswerTimeout) {
     String response;

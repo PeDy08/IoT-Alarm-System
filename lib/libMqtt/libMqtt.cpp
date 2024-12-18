@@ -47,43 +47,6 @@ void mqtt_callback(char* topic, byte* message, unsigned int length) {
     }
 }
 
-/* bool mqtt_publish_queue(String topic, String load) {
-    mqtt_message_t * msg = (mqtt_message_t *)malloc(sizeof(mqtt_message_t));
-    if (msg == NULL) {
-        esplogW(TAG_LIB_MQTT, "(mqtt_publish_queue)", "Failed to allocate memory for mqtt message!");
-        return false;
-    }
-
-    msg->topic = (char *)malloc(topic.length() + 1);
-    if (msg->topic == NULL) {
-        esplogW(TAG_LIB_MQTT, "(mqtt_publish_queue)", "Failed to allocate memory for topic!");
-        free(msg);
-        return false;
-    }
-    strcpy(msg->topic, topic.c_str());
-
-    msg->load = (char *)malloc(load.length() + 1);
-    if (msg->load == NULL) {
-        esplogW(TAG_LIB_MQTT, "(mqtt_publish_queue)", "Failed to allocate memory for load!");
-        free(msg->topic);
-        free(msg);
-        return false;
-    }
-    strcpy(msg->load, load.c_str());
-
-    if (xQueueSend(mqttQueue, &msg, pdMS_TO_TICKS(10)) != pdPASS) {
-        esplogW(TAG_LIB_MQTT, "(mqtt_publish_queue)", "Failed to send message to publish queue!");
-        free(msg->topic);
-        free(msg->load);
-        free(msg);
-        return false;
-    } else {
-        esplogI(TAG_LIB_MQTT, "(mqtt_publish_queue)", "MQTT message has enqueued! [%s]: %s", msg->topic, msg->load);
-    }
-
-    return true;
-} */
-
 bool mqtt_publish(String topic, String load) {
     bool ret = false;
     const int maxMessageSize = 200;
@@ -131,6 +94,100 @@ bool mqtt_publish(String topic, String load) {
         ret = false;
     }
 
+    logMqttMessage(load);
+
     return ret;
 }
 
+bool logMqttMessage(String load) {
+    time_t rawTime = g_vars_ptr->datetime;
+    struct tm * timeInfo = localtime(&rawTime);
+
+    if (rawTime <= 0) {
+        esplogW(TAG_LIB_MQTT, "(logMqttMessage)", "MQTT logging failed! Datetime is incorrect!");
+        return false;
+    }
+
+    char bufferFolder[11];
+    char bufferFile[8];
+    strftime(bufferFolder, sizeof(bufferFolder), "%Y-%m", timeInfo);
+    strftime(bufferFile, sizeof(bufferFile), "%Y-%m-%d", timeInfo);
+    String foldername = String(MQTT_LOG_FILES_PATH) + "/" + String(bufferFolder);
+    String filename = foldername + "/" + String(bufferFile) + ".json";
+
+    // Create the directory path for the month
+    if (!SD.exists(foldername.c_str())) {
+        if (!SD.mkdir(foldername.c_str())) {
+            esplogW(TAG_LIB_MQTT, "(logMqttMessage)", "MQTT logging failed! Failed to create directory for log!");
+            return false;
+        } else {
+            esplogI(TAG_LIB_MQTT, "(logMqttMessage)", "New folder for MQTT logging has been created successfully!");
+        }
+    }
+
+    // Create or append to the daily log file
+    File logFile;
+    if (SD.exists(filename.c_str())) {
+        logFile = SD.open(filename.c_str(), FILE_WRITE);
+        if (!logFile) {
+            esplogW(TAG_LIB_MQTT, "(logMqttMessage)", "MQTT logging failed! Failed to open log file for appending!");
+            return false;
+        }
+
+        // Remove closing bracket, append the new message, and close JSON
+        logFile.seek(logFile.size() - 1); // Go to the end
+        logFile.printf(",\n%s\n]", load.c_str());
+    } else {
+        logFile = SD.open(filename.c_str(), FILE_WRITE);
+        if (!logFile) {
+            esplogW(TAG_LIB_MQTT, "(logMqttMessage)", "MQTT logging failed! Failed to create log file!");
+            return false;
+        } else {
+            esplogI(TAG_LIB_MQTT, "(logMqttMessage)", "New file for MQTT logging has been created successfully! (%s)", filename.c_str());
+        }
+
+        // Write the new JSON array
+        logFile.printf("[\n%s\n]", load.c_str());
+    }
+
+    logFile.close();
+    esplogI(TAG_LIB_MQTT, "(logMqttMessage)", "MQTT message has been logged to SD card successfully! (%s)", filename.c_str());
+    return true;
+}
+
+bool cleanOldLogs() {
+    File logsDir = SD.open(MQTT_LOG_FILES_PATH);
+    if (!logsDir || !logsDir.isDirectory()) {
+        esplogW(TAG_LIB_MQTT, "(cleanOldLogs)", "Logs directory does not exist!");
+        return false;
+    }
+
+    time_t rawTime = g_vars_ptr->datetime;
+    struct tm * timeInfo = localtime(&rawTime);
+
+    if (rawTime <= 0) {
+        esplogW(TAG_LIB_MQTT, "(cleanOldLogs)", "Old logs cleaning failed! Datetime is incorrect!");
+        return false;
+    }
+
+    timeInfo->tm_mon -= MQTT_LOG_KEEP_MONTHS;
+    mktime(timeInfo);
+    char cutoffMonth[8];
+    strftime(cutoffMonth, sizeof(cutoffMonth), "%Y-%m", timeInfo);
+    String cutoffStr = String(cutoffMonth);
+
+    File monthDir;
+    while ((monthDir = logsDir.openNextFile())) {
+        if (!monthDir.isDirectory()) continue;
+
+        String monthName = String(monthDir.name());
+        if (monthName < cutoffStr) { // Compare lexicographically
+            esplogI(TAG_LIB_MQTT, "(cleanOldLogs)", "Deleting old logs directory: %s\n", monthName);
+            SD.rmdir(monthName);
+        }
+        monthDir.close();
+    }
+    logsDir.close();
+    esplogI(TAG_LIB_MQTT, "(logMqttMessage)", "MQTT logging storage has been cleared successfully!");
+    return true;
+}

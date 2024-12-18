@@ -10,6 +10,8 @@ const char *TAG_RTOS_RFID           = "\033[38;5;184mRFID        ";
 const char *TAG_RTOS_GSM            = "\033[38;5;51mGSM         ";
 const char *TAG_RTOS_ZIGBEE         = "\033[38;5;51mZIGBEE      ";
 const char *TAG_RTOS_MQTT           = "\033[38;5;51mMQTT        ";
+const char *TAG_RTOS_DISPLAY        = "\033[38;5;250mDISPLAY     ";
+const char *TAG_RTOS_PERIPHERALS    = "\033[38;5;250mPERIPH      ";
 
 const char *TAG_SERVER              = "\033[38;5;208mSERVER      ";
 
@@ -22,6 +24,7 @@ const char *TAG_LIB_MQTT            = "\033[38;5;250m LIB-MQTT   ";
 const char *TAG_LIB_WIFI            = "\033[38;5;250m LIB-WIFI   ";
 const char *TAG_LIB_ZIGBEE          = "\033[38;5;250m LIB-ZIGBEE ";
 const char *TAG_LIB_UTILS           = "\033[38;5;250m LIB-UTILS  ";
+const char *TAG_LIB_PERIPHERALS     = "\033[38;5;250m LIB-PERIPH ";
 
 void cropSelection(int * selection, int selection_max) {
     if (selection_max == 0) {
@@ -105,11 +108,11 @@ bool esplogI(const char* tag, const char* fx, const char* format, ...) {
     }
 
     if (tag != NULL && tag[0] != '\0' && fx != NULL && fx[0] != '\0') {
-        logFile.printf("\033[1;32mI [%lu]\033[1;39m %s: %s \033[1;90m(fx: %s)\033[0m\n", timestamp, tag, formattedMessage, fx);
+        logFile.printf("I [%lu] %s: %s (fx: %s)", timestamp, tag, formattedMessage, fx);
     } else if (tag != NULL && tag[0] != '\0') {
-        logFile.printf("\033[1;32mI [%lu]\033[1;39m %s: %s\033[0m\n", timestamp, tag, formattedMessage);
+        logFile.printf("I [%lu] %s: %s\n", timestamp, tag, formattedMessage);
     } else {
-        logFile.printf("\033[1;32mI [%lu]\033[1;39m %s\033[0m\n", timestamp, formattedMessage);
+        logFile.printf("I [%lu] %s\n", timestamp, formattedMessage);
     }
 
     free(formattedMessage);
@@ -149,11 +152,11 @@ bool esplogW(const char* tag, const char* fx, const char* format, ...) {
     }
 
     if (tag != NULL && tag[0] != '\0' && fx != NULL && fx[0] != '\0') {
-        logFile.printf("\033[1;33mW\033[1;39m [%lu] %s: %s (fx: %s)\033[0m\n", timestamp, tag, formattedMessage, fx);
+        logFile.printf("W [%lu] %s: %s (fx: %s)", timestamp, tag, formattedMessage, fx);
     } else if (tag != NULL && tag[0] != '\0') {
-        logFile.printf("\033[1;33mW\033[1;39m [%lu] %s: %s\033[0m\n", timestamp, tag, formattedMessage);
+        logFile.printf("W [%lu] %s: %s\n", timestamp, tag, formattedMessage);
     } else {
-        logFile.printf("\033[1;33mW\033[1;39m [%lu] %s\033[0m\n", timestamp, formattedMessage);
+        logFile.printf("W [%lu] %s\n", timestamp, formattedMessage);
     }
 
     free(formattedMessage);
@@ -193,11 +196,11 @@ bool esplogE(const char* tag, const char* fx, const char* format, ...) {
     }
 
     if (tag != NULL && tag[0] != '\0' && fx != NULL && fx[0] != '\0') {
-        logFile.printf("\033[1;31mE\033[1;39m [%lu] %s %s (fx: %s)\033[0m\n", tag, formattedMessage, fx);
+        logFile.printf("E [%lu] %s: %s (fx: %s)", timestamp, tag, formattedMessage, fx);
     } else if (tag != NULL && tag[0] != '\0') {
-        logFile.printf("\033[1;31mE\033[1;39m [%lu] %s %s\033[0m\n", tag, formattedMessage);
+        logFile.printf("E [%lu] %s: %s\n", timestamp, tag, formattedMessage);
     } else {
-        logFile.printf("\033[1;31mE\033[1;39m [%lu] %s\033[0m\n", formattedMessage);
+        logFile.printf("E [%lu] %s\n", timestamp, formattedMessage);
     }
 
     free(formattedMessage);

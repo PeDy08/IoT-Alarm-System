@@ -17,16 +17,40 @@ void updateSerialZigbee() {
 }
 
 /**
- * @brief Sends command to the zigbee module and waits for the expected response.
- * 
- * This function repeatedly sends command to the zigbee module and checks if the
- * expected response is received. If the response contains the expected string, it
- * returns true; otherwise, it will keep trying until a timeout occurs.
- * 
- * @param sendMsg The iot_alarm_message_t command to send to the zigbee module.
- * @param receivedMsg Pointer to iot_alarm_message_t that will store the received response.
- * @param timeout The time (in milliseconds) to wait for the response (default is 6000 ms).
- * @return number of tx bytes or -1 if failed
+ * @brief Sends a message to the Zigbee module and waits for the correct acknowledgment response.
+ *
+ * This function sends a message over the Zigbee UART interface and waits for a corresponding acknowledgment
+ * within a specified timeout period. It temporarily suspends the Zigbee task to ensure exclusive access to
+ * the UART interface. The function checks if the received message matches the expected response type and ID.
+ *
+ * @param[in] sendMsg Pointer to the message to be sent.
+ * @param[out] receivedMsg Double pointer to store the received acknowledgment message.
+ * @param[in] timeout Optional timeout in milliseconds to wait for a response (default is 5000 ms).
+ * @return The number of bytes sent on success, or -1 if the operation times out or fails.
+ *
+ * @note The function suspends `handleTaskZigbee` during the operation to avoid UART conflicts.
+ *
+ * @warning If `sendMsg` or `receivedMsg` is `NULL`, the function logs a warning and returns `false`.
+ *
+ * @details The function operates as follows:
+ *  1. Clears any pending data in the Zigbee UART buffer.
+ *  2. Suspends `handleTaskZigbee` if it's not the current task.
+ *  3. Sends the message using `send_message()`.
+ *  4. Waits for an acknowledgment response by calling `receive_message()`.
+ *  5. Verifies the response direction, ID, and status.
+ *  6. Resumes `handleTaskZigbee` after completion.
+ *
+ * Example Usage:
+ * @code
+ * iot_alarm_message_t sendMsg = {...};
+ * iot_alarm_message_t *receivedMsg = NULL;
+ * int result = waitForCorrectResponseZigbee(&sendMsg, &receivedMsg);
+ * if (result > 0) {
+ *     // Success handling
+ * } else {
+ *     // Error handling
+ * }
+ * @endcode
  */
 int waitForCorrectResponseZigbee(iot_alarm_message_t * sendMsg, iot_alarm_message_t ** receivedMsg, unsigned long timeout = 5000) {
     if (sendMsg == NULL || receivedMsg == NULL) {
@@ -94,7 +118,6 @@ bool initSerialZigbee() {
 
     esplogI(TAG_LIB_ZIGBEE, "(initSerialZigbee)", "ZIGBEE INITIALISATION!");
 
-    // initialisation
     int tx_bytes = waitForCorrectResponseZigbee(msg, &ack, 10000);
     if (!ret || tx_bytes <= 0) {
         esplogW(TAG_LIB_ZIGBEE, "(initSerialZigbee)", "Failed finding zigbee module!");
@@ -114,7 +137,6 @@ bool zigbeeReset() {
     iot_alarm_message_t * msg = create_message(IOT_ALARM_MSGDIR_COMMAND, IOT_ALARM_MSGSTATUS_SUCCESS, IOT_ALARM_MSGTYPE_CTL_RESTART, 1, "\0");
     iot_alarm_message_t * ack = create_message(IOT_ALARM_MSGDIR_MAX, IOT_ALARM_MSGSTATUS_MAX, IOT_ALARM_MSGTYPE_MAX, 1, "\0");
 
-    // sending the message
     int tx_bytes = waitForCorrectResponseZigbee(msg, &ack, 10000);
     if (tx_bytes <= 0) {
         esplogW(TAG_LIB_ZIGBEE, "(zigbeeReset)", "Failed sending message to zigbee module!");
@@ -133,7 +155,6 @@ bool zigbeeFactory() {
     iot_alarm_message_t * msg = create_message(IOT_ALARM_MSGDIR_COMMAND, IOT_ALARM_MSGSTATUS_SUCCESS, IOT_ALARM_MSGTYPE_CTL_FACTORY, 1, "\0");
     iot_alarm_message_t * ack = create_message(IOT_ALARM_MSGDIR_MAX, IOT_ALARM_MSGSTATUS_MAX, IOT_ALARM_MSGTYPE_MAX, 1, "\0");
 
-    // sending the message
     int tx_bytes = waitForCorrectResponseZigbee(msg, &ack, 10000);
     if (tx_bytes <= 0) {
         esplogW(TAG_LIB_ZIGBEE, "(zigbeeFactory)", "Failed sending message to zigbee module!");
@@ -146,6 +167,7 @@ bool zigbeeFactory() {
     destroy_message(&ack);
     return ret;
 }
+
 
 bool zigbeeCount() {
     int ret = true;
@@ -298,8 +320,8 @@ bool zigbeeAttrReportHandler(iot_alarm_attr_load_t * attr) {
                 if (attr->attr_id == 0x0002 && attr->value == 1) {
                     esplogW(TAG_RTOS_ZIGBEE, "(zigbeeAttrReportHandler)", "Alarm event triggered! [ZONESTATUS = 1 at 0x%04hx/%d]", attr->short_addr, attr->endpoint_id);
                     displayNotification(NOTIFICATION_ZIGBEE_ATTR_REPORT);
-                    if (g_vars_ptr->state == STATE_ALARM_OK || g_vars_ptr->state == STATE_ALARM_W || g_vars_ptr->state == STATE_ALARM_E) {
-                        g_vars_ptr->alarm_events++;
+                    if (g_vars_ptr->state == STATE_ALARM_OK || g_vars_ptr->state == STATE_ALARM_W) {
+                        g_vars_ptr->alarm.alarm_events++;
                     }
                 }
                 break;
@@ -310,8 +332,8 @@ bool zigbeeAttrReportHandler(iot_alarm_attr_load_t * attr) {
                 if (attr->attr_id == 0x0000 && attr->value == 1) {
                     esplogW(TAG_RTOS_ZIGBEE, "(zigbeeAttrReportHandler)", "Alarm event triggered! [OCCUPANCY = 1 at 0x%04hx/%d]", attr->short_addr, attr->endpoint_id);
                     displayNotification(NOTIFICATION_ZIGBEE_ATTR_REPORT);
-                    if (g_vars_ptr->state == STATE_ALARM_OK || g_vars_ptr->state == STATE_ALARM_W || g_vars_ptr->state == STATE_ALARM_E) {
-                        g_vars_ptr->alarm_events++;
+                    if (g_vars_ptr->state == STATE_ALARM_OK || g_vars_ptr->state == STATE_ALARM_W) {
+                        g_vars_ptr->alarm.alarm_events++;
                     }
                 }
                 break;
@@ -321,9 +343,7 @@ bool zigbeeAttrReportHandler(iot_alarm_attr_load_t * attr) {
             case 0x0500002BU:
                 if (attr->attr_id == 0x0002) {
                     if (attr->value == 1) {esplogW(TAG_RTOS_ZIGBEE, "(zigbeeAttrReportHandler)", "Fire alarm triggered! [ZONESTATUS = 1 at 0x%04hx/%d]", attr->short_addr, attr->endpoint_id);}
-                    if (g_vars_ptr->state == STATE_ALARM_OK || g_vars_ptr->state == STATE_ALARM_W || g_vars_ptr->state == STATE_ALARM_E) {
-                        g_vars_ptr->alarm_event_fire = attr->value > 0;
-                    }
+                    g_vars_ptr->alarm.alarm_fire = attr->value > 0;
                 }
                 break;
 
@@ -331,7 +351,7 @@ bool zigbeeAttrReportHandler(iot_alarm_attr_load_t * attr) {
             case 0x0500002AU:
                 if (attr->attr_id == 0x0002) {
                     if (attr->value == 1) {esplogW(TAG_RTOS_ZIGBEE, "(zigbeeAttrReportHandler)", "Water-leakage alarm triggered! [ZONESTATUS = 1 at 0x%04hx/%d]", attr->short_addr, attr->endpoint_id);}
-                    g_vars_ptr->alarm_event_water = attr->value > 0;
+                    g_vars_ptr->alarm.alarm_water = attr->value > 0;
                 }
                 break;
 
@@ -914,10 +934,25 @@ void destroy_attr(iot_alarm_attr_load_t **attr) {
     }
 }
 
-bool compare_attr(iot_alarm_attr_load_t attr1, iot_alarm_attr_load_t attr2) {
+/* bool compare_attr(iot_alarm_attr_load_t attr1, iot_alarm_attr_load_t attr2) {
     return (attr1.manuf == attr2.manuf && attr1.name == attr2.name && attr1.type == attr2.type && attr1.type_id == attr2.type_id && 
         attr1.device_id == attr2.device_id && attr1.endpoint_id == attr2.endpoint_id && attr1.cluster_id == attr2.cluster_id && attr1.attr_id == attr2.attr_id && 
         attr1.value_type == attr2.value_type && attr1.value == attr2.value && attr1.short_addr == attr2.short_addr && attr1.ieee_addr == attr2.ieee_addr);
+} */
+
+bool compare_attr(iot_alarm_attr_load_t attr1, iot_alarm_attr_load_t attr2) {
+    return (strcmp(attr1.manuf, attr2.manuf) == 0 &&   // Compare manuf strings
+            strcmp(attr1.name, attr2.name) == 0 &&     // Compare name strings
+            strcmp(attr1.type, attr2.type) == 0 &&     // Compare type strings
+            attr1.type_id == attr2.type_id &&
+            attr1.device_id == attr2.device_id &&
+            attr1.endpoint_id == attr2.endpoint_id &&
+            attr1.cluster_id == attr2.cluster_id &&
+            attr1.attr_id == attr2.attr_id &&
+            attr1.value_type == attr2.value_type &&
+            attr1.value == attr2.value &&
+            attr1.short_addr == attr2.short_addr &&
+            memcmp(attr1.ieee_addr, attr2.ieee_addr, sizeof(attr1.ieee_addr)) == 0);  // Compare ieee_addr
 }
 
 void copy_attr(iot_alarm_attr_load_t * src, iot_alarm_attr_load_t * dst) {

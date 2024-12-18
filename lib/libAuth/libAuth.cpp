@@ -2,6 +2,8 @@
 
 MFRC522 mfrc522(RFID_CS_PIN, RFID_RST_PIN);
 
+// **************************************************************** PSWD ****************************************************************
+
 String hashPassword(String &inputPassword) {
     esplogI(TAG_LIB_AUTH, "(hashPassword)", "Hashing password...");
     inputPassword.trim();
@@ -191,7 +193,49 @@ int lengthPassword() {
 }
 
 
-// ******************************** RFID ********************************
+// **************************************************************** RFID ****************************************************************
+
+bool checkRfid(String &inputRfid) {
+    esplogI(TAG_LIB_AUTH, "(checkRfid)", "Checking rfid...");
+    inputRfid.trim();
+    if (!SD.exists(RFID_FILE)) {
+        esplogW(TAG_LIB_AUTH, "(checkRfid)", "RFID file not found!");
+        displayNotification(NOTIFICATION_RFID_CHECK_ERROR);
+        return false;
+    }
+
+    File rfidFile = SD.open(RFID_FILE, "r");
+    if (!rfidFile) {
+        esplogE(TAG_LIB_AUTH, "(checkRfid)", "Failed to open RFID file: %s! Unexpected error!", RFID_FILE);
+        displayNotification(NOTIFICATION_RFID_CHECK_ERROR);
+        return false;
+    }
+
+    bool recordFound = false;
+    while (rfidFile.available()) {
+        String line = rfidFile.readStringUntil('\n');
+        line.trim();
+        
+        if (line == inputRfid) {
+            esplogI(TAG_LIB_AUTH, "(checkRfid)", "Found matching RFID record: %s", inputRfid.c_str());
+            recordFound = true;
+            break;
+        }
+    }
+
+    rfidFile.close();
+
+    if (recordFound) {
+        esplogI(TAG_LIB_AUTH, "(checkRfid)", "RFID record exists.");
+        displayNotification(NOTIFICATION_RFID_CHECK_SUCCESS);
+        return true;
+    } else {
+        esplogW(TAG_LIB_AUTH, "(checkRfid)", "RFID record not found.");
+        displayNotification(NOTIFICATION_RFID_CHECK_ERROR);
+        return false;
+    }
+}
+
 bool saveRfid(String &inputRfid) {
     esplogI(TAG_LIB_AUTH, "(saveRfid)", "Saving rfid to file...");
     inputRfid.trim();
@@ -329,45 +373,4 @@ bool delRfid(String &inputRfid) {
 bool existsRfid() {
     esplogI(TAG_LIB_AUTH, "(existsRfid)", "Checking if rfid file exists... %d", SD.exists(RFID_FILE));
     return SD.exists(RFID_FILE);
-}
-
-bool checkRfid(String &inputRfid) {
-    esplogI(TAG_LIB_AUTH, "(checkRfid)", "Checking rfid...");
-    inputRfid.trim();
-    if (!SD.exists(RFID_FILE)) {
-        esplogW(TAG_LIB_AUTH, "(checkRfid)", "RFID file not found!");
-        displayNotification(NOTIFICATION_RFID_CHECK_ERROR);
-        return false;
-    }
-
-    File rfidFile = SD.open(RFID_FILE, "r");
-    if (!rfidFile) {
-        esplogE(TAG_LIB_AUTH, "(checkRfid)", "Failed to open RFID file: %s! Unexpected error!", RFID_FILE);
-        displayNotification(NOTIFICATION_RFID_CHECK_ERROR);
-        return false;
-    }
-
-    bool recordFound = false;
-    while (rfidFile.available()) {
-        String line = rfidFile.readStringUntil('\n');
-        line.trim();
-        
-        if (line == inputRfid) {
-            esplogI(TAG_LIB_AUTH, "(checkRfid)", "Found matching RFID record: %s", inputRfid.c_str());
-            recordFound = true;
-            break;
-        }
-    }
-
-    rfidFile.close();
-
-    if (recordFound) {
-        esplogI(TAG_LIB_AUTH, "(checkRfid)", "RFID record exists.");
-        displayNotification(NOTIFICATION_RFID_CHECK_SUCCESS);
-        return true;
-    } else {
-        esplogW(TAG_LIB_AUTH, "(checkRfid)", "RFID record not found.");
-        displayNotification(NOTIFICATION_RFID_CHECK_ERROR);
-        return false;
-    }
 }

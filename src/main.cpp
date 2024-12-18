@@ -8,12 +8,12 @@
 TaskHandle_t handleTaskMenu = NULL;
 TaskHandle_t handleTaskAlarm = NULL;
 TaskHandle_t handleTaskKeypad = NULL;
-TaskHandle_t handleTaskNet = NULL;
+TaskHandle_t handleTaskWiFi = NULL;
 TaskHandle_t handleTaskDatetime = NULL;
 TaskHandle_t handleTaskSetup = NULL;
 TaskHandle_t handleTaskRfid = NULL;
 TaskHandle_t handleTaskDisplay = NULL;
-TaskHandle_t handleTaskGsm = NULL;
+TaskHandle_t handleTaskNotifications = NULL;
 TaskHandle_t handleTaskZigbee = NULL;
 TaskHandle_t handleTaskMqtt = NULL;
 TaskHandle_t handleTaskMenuRefresh = NULL;
@@ -65,9 +65,20 @@ g_vars_t g_vars = {
 
   .pin = "",
   .attempts = 0,
-  .alarm_events = 0,
-  .alarm_event_fire = 0,
-  .alarm_event_water = 0,
+  .alarm = {
+    .alarm_fire = 0,
+    .alarm_water = 0,
+    .alarm_electricity = 0,
+    .alarm_intrusion = 0,
+    .alarm_events = 0,
+    .notification_fire = 0,
+    .notification_water = 0,
+    .notification_electricity = 0,
+    .notification_intrusion = 0,
+    .notification_warning = 0,
+    .notification_emergency = 0,
+    .alarm_status = ALARM_STATUS_OFF,
+  },
   .time_temp = 0,
 };
 
@@ -76,6 +87,7 @@ g_config_t * g_config_ptr = &g_config;
 
 // -------------------------------------------------------------------------------------------------------------
 /* MAIN APPLICATION SETUP */
+
 void setup() {
   Serial.begin(115200);
   Wire.begin(IIC_SDA, IIC_CLK);
@@ -124,16 +136,21 @@ void setup() {
     esplogE(TAG_SETUP, NULL, "Failed to initialise keypad! Rebooting...");
   }
 
-  // init GSM module
-  // if (!initSerialGSM()) {
-  //   esplogE("[setup]: Failed to initialise GSM module!\n");
-  // }
+  // init other peripherals
+  if (!initOutputDevices()) {
+    esplogE(TAG_SETUP, NULL, "Failed to initialise peripherals! Rebooting...");
+  }
 
-  // init Zigbee module
+  // init GSM module
+  if (!initSerialGSM()) {
+    esplogE(TAG_SETUP, NULL, "Failed to initialise GSM module! Rebooting...");
+  }
+
+  // init Zigbee module - not causing reset if fails!
   tx_buffer = (uint8_t*)malloc(TX_BUF_SIZE + 1);
   rx_buffer = (uint8_t*)malloc(RX_BUF_SIZE + 1);
   if (!initSerialZigbee()) {
-    esplogE(TAG_SETUP, NULL, "Failed to initialise Zigbee module!");
+    esplogW(TAG_SETUP, NULL, "Failed to initialise Zigbee module!");
   }
 
   // init rfid
@@ -144,25 +161,23 @@ void setup() {
   // automatically start AP setup if no ssid is provided
   if (g_config.wifi_ssid == "") {
     esplogI(TAG_SETUP, NULL, "No SSID has been configured, starting AP setup!");
-    notificationScreenTemplate("No WiFi SSID configured", "Please open WiFi setup!");
     g_vars.wifi_mode = WIFI_MODE_AP;
     startWifiSetupMode();
     for (;;) {vTaskDelay(1000 / portTICK_PERIOD_MS);}
   }
 
   // queue initialisation
-  // queueMqtt = xQueueCreate(10, sizeof(mqtt_message_t));
   queueNotification = xQueueCreate(10, sizeof(notification_t));
 
   // start support tasks
   xTaskCreate(rtosKeypad, "keypad", 8192, NULL, 3, &handleTaskKeypad);
   xTaskCreate(rtosRfid, "rfid", 4096, NULL, 3, &handleTaskRfid);
   xTaskCreate(rtosDisplay, "display", 8192, NULL, 4, &handleTaskDisplay);
-  // xTaskCreate(rtosGsm, "gsm", 8192, NULL, 2, &handleTaskGsm);
-  xTaskCreate(rtosZigbee, "zigbee", 8192, NULL, 4, &handleTaskZigbee);
+  xTaskCreate(rtosNotifications, "notifications", 8192, NULL, 2, &handleTaskNotifications);
+  // xTaskCreate(rtosZigbee, "zigbee", 8192, NULL, 4, &handleTaskZigbee);
   xTaskCreatePinnedToCore(rtosMqtt, "mqtt", 8192, NULL, 2, &handleTaskMqtt, CONFIG_ARDUINO_RUNNING_CORE);
   xTaskCreatePinnedToCore(rtosDatetime, "datetime", 4096, NULL, 1, &handleTaskDatetime, CONFIG_ARDUINO_RUNNING_CORE);
-  xTaskCreatePinnedToCore(rtosNet, "net", 8192, NULL, 1, &handleTaskNet, CONFIG_ARDUINO_RUNNING_CORE);
+  xTaskCreatePinnedToCore(rtosWiFi, "wifi", 8192, NULL, 1, &handleTaskWiFi, CONFIG_ARDUINO_RUNNING_CORE);
 
   // start refresher tasks
   xTaskCreate(rtosMenuRefresh, "menurefresh", 1024, NULL, 1, &handleTaskMenuRefresh);
@@ -178,12 +193,14 @@ void setup() {
 
 // -------------------------------------------------------------------------------------------------------------
 /* LOOP FUNCTION */
+
 void loop() {
   vTaskDelay(100 * 60 * 1000 / portTICK_PERIOD_MS);
 }
 
 // -------------------------------------------------------------------------------------------------------------
 /* STATE AUTO REFRESHER */
+
 void rtosMenuRefresh(void* parameters) {
   // esplogI("[setup]: rtosMenuRefresh task was created!\n");
   vTaskSuspend(NULL);
@@ -196,6 +213,7 @@ void rtosMenuRefresh(void* parameters) {
 
 // -------------------------------------------------------------------------------------------------------------
 /* RFID AUTO REFRESHER */
+
 void rtosRfidRefresh(void* parameters) {
   // esplogI("[setup]: rtosRfidRefresh task was created!\n");
   vTaskSuspend(NULL);
@@ -207,6 +225,7 @@ void rtosRfidRefresh(void* parameters) {
 
 // -------------------------------------------------------------------------------------------------------------
 /* KEYPAD SCANNER */
+
 void rtosKeypad(void* parameters) {
   // esplogI("[setup]: rtosKeypad task was created!\n");
   char keymap[] = "147*2580369#ABCDNF";
@@ -236,15 +255,16 @@ void rtosKeypad(void* parameters) {
 
 // -------------------------------------------------------------------------------------------------------------
 /* WIFI AP SETUP HANDLER */
+
 void rtosWifiSetup(void* parameters) {
   // esplogI(TAG_SETUP, NULL, "rtosSetup task was created!");
   esplogI(TAG_RTOS_WIFI, NULL, "WiFi setup mode is active!");
   // vTaskDelete(handleTaskKeypad); <- for possibility to reboot esp by pressing any key
   vTaskDelete(handleTaskMenu);
-  vTaskDelete(handleTaskNet);
+  vTaskDelete(handleTaskWiFi);
   vTaskDelete(handleTaskDatetime);
   vTaskDelete(handleTaskZigbee);
-  vTaskDelete(handleTaskGsm);
+  vTaskDelete(handleTaskNotifications);
   g_vars.wifi_mode = WIFI_MODE_AP;
 
   startWifiSetupMode();
@@ -253,6 +273,7 @@ void rtosWifiSetup(void* parameters) {
 
 // -------------------------------------------------------------------------------------------------------------
 /* DATETIME UPDATE HANDLER */
+
 void rtosDatetime(void* parameters) {
 
   while (WiFi.status() != WL_CONNECTED) {
@@ -265,6 +286,7 @@ void rtosDatetime(void* parameters) {
 
   while (!timeClient.update()) {
     timeClient.forceUpdate();
+    vTaskDelay(5000 / portTICK_PERIOD_MS);
   }
 
   for (;;) {
@@ -288,8 +310,9 @@ void rtosDatetime(void* parameters) {
 
 // -------------------------------------------------------------------------------------------------------------
 /* WIFI/INTERNET HANDLER */
-void rtosNet(void* parameters) {
-  // esplogI("[setup]: rtosNet task was created!\n");
+
+void rtosWiFi(void* parameters) {
+  // esplogI("[setup]: rtosWiFi task was created!\n");
 
   // TODO think about replacing "while(true) and wifi.state()"" with "esp wifi events"
   // dont start the WiFi task if config has not been set
@@ -299,11 +322,20 @@ void rtosNet(void* parameters) {
     goto skiploop;
   }
 
-  startWiFiServerMode(&g_vars, &g_config);
+  startWiFiServerMode();
   vTaskDelay(10000 / portTICK_PERIOD_MS);
 
 loop:
   for(;;) {
+    // display status changes
+    if (g_vars.wifi_status != WiFi.status()) {
+      if (WiFi.status() == WL_CONNECTED) {
+        displayNotification(NOTIFICATION_WIFI_CONNEDTED);
+      } else {
+        displayNotification(NOTIFICATION_WIFI_DISCONECTED);
+      }
+    }
+
     // check wifi state
     g_vars.wifi_status = WiFi.status();
     switch (g_vars.wifi_status) {
@@ -362,36 +394,37 @@ skiploop:
 
 // -------------------------------------------------------------------------------------------------------------
 /* DISPLAY REFRESHER HANDELER */
+
 void rtosDisplay(void* parameters) {
   // esplogI("[setup]: rtosDisplay task was created!\n");
   notification_t * notification;
   for (;;) {
-    // if state hasn't changed && no notification is in queue -> delay task and loop
+    // based on notification queue prepare display content
+    // send data to display all at once
+    // wait till display is ready
+    if (xQueueReceive(queueNotification, &notification, 5) == pdTRUE) {
+      if (notification != NULL) {
+        // function to display notification
+        displayNotificationHandler(notification->id, notification->param);
+        g_vars.refresh_display.refresh = true;
+        free(notification);
+        notification == NULL;
+
+        if (notification->duration > 0) {
+          vTaskDelay(notification->duration / portTICK_PERIOD_MS);
+        } else {
+          vTaskDelay(1000 / portTICK_PERIOD_MS);
+        }
+      }
+    }
+
+    // if state hasn't changed -> delay task and loop
     if (refresh_display_any(g_vars.refresh_display, g_vars)) {
       // based on current state prepare display content
       // send data to display all at once
       // wait till display is ready
       displayLoad();
-
-      // based on notification queue prepare display content
-      // send data to display all at once
-      // wait till display is ready
-      if (xQueueReceive(queueNotification, &notification, 5) == pdTRUE) {
-        if (notification != NULL) {
-          // function to display notification
-          displayNotificationHandler(notification->id, notification->param);
-          g_vars.refresh_display.refresh = true;
-          free(notification);
-          notification == NULL;
-
-          if (notification->duration > 0) {
-            vTaskDelay(notification->duration / portTICK_PERIOD_MS);
-          } else {
-            vTaskDelay(1000 / portTICK_PERIOD_MS);
-          }
-        }
-      }
-
+      // esplogI(TAG_RTOS_DISPLAY, NULL, "Display has been refreshed!");
     } else {
       vTaskDelay(500 / portTICK_PERIOD_MS);
     }
@@ -399,23 +432,87 @@ void rtosDisplay(void* parameters) {
 }
 
 // -------------------------------------------------------------------------------------------------------------
-/* GSM COMMUNICATION HANDELER */
-void rtosGsm(void* parameters) {
-  // esplogI("[setup]: rtosGsm task was created!\n");
-  // TODO
+/* ALARM NOTIFICATIONS HANDELER */
+
+void rtosNotifications(void* parameters) {
+  // esplogI("[setup]: rtosNotifications task was created!\n");
+  unsigned long led_refresh_time = 0;
+  unsigned long curr_time;
+
   for(;;) {
+    curr_time = millis();
+    if (g_vars.alarm.alarm_fire && !g_vars.alarm.notification_fire) {
+      g_vars.alarm.notification_fire = true;
+      #warning TODO notifications
+    }
+
+    if (g_vars.alarm.alarm_water && !g_vars.alarm.notification_water) {
+      g_vars.alarm.notification_water = true;
+      #warning TODO notifications
+    }
+
+    if (g_vars.alarm.alarm_electricity && !g_vars.alarm.notification_electricity) {
+      g_vars.alarm.notification_electricity = true;
+      #warning TODO notifications
+    }
+
+    if (g_vars.alarm.alarm_intrusion) {
+      switch (g_vars.alarm.alarm_status) {
+        case ALARM_STATUS_OFF:
+          break;
+        case ALARM_STATUS_OK:
+          break;
+        case ALARM_STATUS_STARTING:
+          break;
+        case ALARM_STATUS_WARN:
+          if (!g_vars.alarm.notification_warning) {
+            g_vars.alarm.notification_warning = true;
+            #warning TODO GSM, EINK notifications
+          }
+          break;
+        case ALARM_STATUS_EMERG:
+          if (!g_vars.alarm.notification_emergency) {
+            g_vars.alarm.notification_emergency = true;
+            #warning TODO GSM, EINK notifications
+          }
+          break;
+        case ALARM_STATUS_TESTING:
+          break;
+        default:
+          break;
+      }
+    }
+
+    #warning TODO battery measurement + notifications
+
+    // #warning TODO electricity status measurement
+    if (curr_time > led_refresh_time) {
+      // get battery status
+      refreshBatteryLevel();
+      refreshPowerMode();
+      ledByBattery();
+
+      // get GSM status
+      getRssiGSM(&g_vars.gsm_strength, NULL);
+      g_vars.refresh_display.refresh_status = true;
+      led_refresh_time = curr_time + 60 * 1000;
+    }
+
+    #warning TODO buzzer notifications
+
     vTaskDelay(500 / portTICK_PERIOD_MS);
   }
 }
 
 // -------------------------------------------------------------------------------------------------------------
 /* MQTT SUBSCRIBE HANDELER */
+
 void rtosMqtt(void* parameters) {
   // esplogI("[setup]: rtosMqtt task was created!\n");
 
   while (g_config.mqtt_broker.length() <= 0 || g_config.mqtt_id.length() <= 0) {
     esplogW(TAG_RTOS_MQTT, NULL, "MQTT setup failed, please fill in MQTT configuration!");
-    vTaskDelay(10 * 1000 / portTICK_PERIOD_MS);
+    vTaskDelay(60 * 1000 / portTICK_PERIOD_MS);
   }
 
   while (g_vars.wifi_status != WL_CONNECTED) {vTaskDelay(2000 / portTICK_PERIOD_MS);}
@@ -437,6 +534,7 @@ void rtosMqtt(void* parameters) {
     while (!mqtt.connected()) {
       if (mqtt.connect(g_config.mqtt_id.c_str(), g_config.mqtt_username.c_str(), g_config.mqtt_password.c_str())) {
         esplogI(TAG_RTOS_MQTT, NULL, "MQTT server connected!");
+        displayNotification(NOTIFICATION_MQTT_CONNECTED);
         // subscribe to topics
         if (mqtt.subscribe(String(g_config.mqtt_topic + String("/read/in/#")).c_str())) {
           esplogI(TAG_RTOS_MQTT, NULL, "Subscribed to: %s", String(g_config.mqtt_topic + String("/read/in")).c_str());
@@ -448,36 +546,19 @@ void rtosMqtt(void* parameters) {
         
       } else {
         esplogW(TAG_RTOS_MQTT, NULL, "Failed to connect to MQTT server! (%s)", g_config.mqtt_broker.c_str());
-        vTaskDelay(5000 / portTICK_PERIOD_MS);
+        vTaskDelay(15 * 1000 / portTICK_PERIOD_MS);
+        displayNotification(NOTIFICATION_MQTT_DISCONECTED);
       }
     }
 
-    /* mqtt_message_t * message;
-    if (xQueueReceive(mqttQueue, &message, 0) == pdTRUE) {
-      esplogI(TAG_RTOS_MQTT, NULL, "MQTT message has been poped from queue! [%s]: %s", message->topic, message->load);
-      mqtt_publish(message->topic, message->load);
-
-      if (message != NULL) {
-        if (message->load != NULL) {
-          free(message->load);
-        }
-
-        if (message->topic != NULL) {
-          free(message->topic);
-        }
-
-        free(message);
-        message = NULL;
-      }
-    } */
-
     mqtt.loop();
-    vTaskDelay(5000 / portTICK_PERIOD_MS);
+    vTaskDelay(500 / portTICK_PERIOD_MS);
   }
 }
 
 // -------------------------------------------------------------------------------------------------------------
 /* ZIGBEE COMMUNICATION HANDELER */
+
 void rtosZigbee(void* parameters) {
   // esplogI("[setup]: rtosZigbee task was created!\n");
   esp_zb_ieee_addr_t ieee_addr;
@@ -635,43 +716,55 @@ void rtosZigbee(void* parameters) {
 
 // -------------------------------------------------------------------------------------------------------------
 /* ALARM APPLICATION HANDELER */
+
 void rtosAlarm(void* testmode) {
   // esplogI("[setup]: rtosAlarm task was created!\n");
   unsigned long w_time = 0;
+  unsigned long event_time = 0;
   bool testing = (bool)testmode;
+  g_vars.alarm.alarm_status = ALARM_STATUS_OK;
+
   for (;;) {
     unsigned long curr_time = millis();
 
     // handle alarm events if state is OK
     if (g_vars.state == STATE_ALARM_OK || g_vars.state == STATE_TEST_OK) {
-      if (g_vars.alarm_events >= g_config.alarm_w_threshold) {
+      if (g_vars.alarm.alarm_events >= g_config.alarm_w_threshold) {
         w_time = millis();
         if (testing) {
           setState(STATE_TEST_W, 0, 0);
+          g_vars.alarm.alarm_status = ALARM_STATUS_TESTING;
         } else {
           setState(STATE_ALARM_W, 0, 0);
+          g_vars.alarm.alarm_status = ALARM_STATUS_WARN;
         }
       }
 
-      if (g_vars.alarm_events >= g_config.alarm_e_threshold) {
+      if (g_vars.alarm.alarm_events >= g_config.alarm_e_threshold) {
         w_time = 0;
         g_vars.time_temp = 0;
         if (testing) {
           setState(STATE_TEST_E, 0, 0);
+          g_vars.alarm.alarm_status = ALARM_STATUS_TESTING;
         } else {
           setState(STATE_ALARM_E, 0, 0);
+          g_vars.alarm.alarm_intrusion = true;
+          g_vars.alarm.alarm_status = ALARM_STATUS_EMERG;
         }
       }
 
     // handle alarm events if state is W
     } else if (g_vars.state == STATE_ALARM_W  || g_vars.state == STATE_TEST_W) {
-      if (g_vars.alarm_events >= g_config.alarm_e_threshold) {
+      if (g_vars.alarm.alarm_events >= g_config.alarm_e_threshold) {
         w_time = 0;
         g_vars.time_temp = 0;
         if (testing) {
           setState(STATE_TEST_E, 0, 0);
+          g_vars.alarm.alarm_status = ALARM_STATUS_TESTING;
         } else {
           setState(STATE_ALARM_E, 0, 0);
+          g_vars.alarm.alarm_intrusion = true;
+          g_vars.alarm.alarm_status = ALARM_STATUS_EMERG;
         }
       }
 
@@ -681,8 +774,11 @@ void rtosAlarm(void* testmode) {
           g_vars.time_temp = 0;
           if (testing) {
             setState(STATE_TEST_E, 0, 0);
+            g_vars.alarm.alarm_status = ALARM_STATUS_TESTING;
           } else {
             setState(STATE_ALARM_E, 0, 0);
+            g_vars.alarm.alarm_intrusion = true;
+            g_vars.alarm.alarm_status = ALARM_STATUS_EMERG;
           }
         } else {
           g_vars.time_temp = curr_time - w_time;
@@ -704,6 +800,7 @@ void rtosAlarm(void* testmode) {
 
 // -------------------------------------------------------------------------------------------------------------
 /* RFID READER HANDLER */
+
 void rtosRfid(void* parameters) {
   // esplogI("[setup]: rtosRfid task was created!\n");
   for (;;) {
@@ -828,6 +925,7 @@ void rtosRfid(void* parameters) {
 
 // -------------------------------------------------------------------------------------------------------------
 /* MAIN APPLICATION STUCTURE */
+
 void rtosMenu(void* parameters) {
   // esplogI("[setup]: rtosMenu task was created!\n");
   vTaskDelay(500 / portTICK_PERIOD_MS);
@@ -895,19 +993,19 @@ void rtosMenu(void* parameters) {
 
               // TODO add notification window, handle the actions, add password controll
               case SELECTION_SETUP_OPEN_ZB:
-                setState(STATE_SETUP, 0, SELECTION_SETUP_MAX);
+                setState(STATE_SETUP, -1, SELECTION_SETUP_MAX);
                 zigbeeOpen();
                 break;  
               case SELECTION_SETUP_CLOSE_ZB:
-                setState(STATE_SETUP, 0, SELECTION_SETUP_MAX);
+                setState(STATE_SETUP, -1, SELECTION_SETUP_MAX);
                 zigbeeClose();
                 break;  
               case SELECTION_SETUP_CLEAR_ZB:
-                setState(STATE_SETUP, 0, SELECTION_SETUP_MAX);
+                setState(STATE_SETUP, -1, SELECTION_SETUP_MAX);
                 zigbeeClear();
                 break;  
               case SELECTION_SETUP_RESET_ZB:
-                setState(STATE_SETUP, 0, SELECTION_SETUP_MAX);
+                setState(STATE_SETUP, -1, SELECTION_SETUP_MAX);
                 zigbeeReset();
                 break;
 
@@ -939,7 +1037,7 @@ void rtosMenu(void* parameters) {
                   vTaskResume(handleTaskRfidRefresh);
                 } else {
                   esplogW(TAG_RTOS_MAIN, NULL, "Unexpected behaviour! There should not be RFID set when no PIN was set yet!");
-                  setState(STATE_SETUP, 0, SELECTION_SETUP_MAX);
+                  setState(STATE_SETUP, -1, SELECTION_SETUP_MAX);
                 }
                 break;
               case SELECTION_SETUP_CHECK_RFID:
@@ -953,8 +1051,9 @@ void rtosMenu(void* parameters) {
                   vTaskResume(handleTaskRfidRefresh);
                 } else {
                   esplogW(TAG_RTOS_MAIN, NULL, "Unexpected behaviour! There should not be RFID set when no PIN was set yet!");
-                  setState(STATE_SETUP, 0, SELECTION_SETUP_MAX);
-                }                break;
+                  setState(STATE_SETUP, -1, SELECTION_SETUP_MAX);
+                }
+                break;
               case SELECTION_SETUP_HARD_RESET:
                 if (existsPassword()) {
                   setState(STATE_SETUP_HARD_RESET_ENTER_PIN, 0, 0);
@@ -1019,6 +1118,7 @@ void rtosMenu(void* parameters) {
           case STATE_SETUP_HARD_RESET:
             esplogI(TAG_RTOS_MAIN, NULL, "Hard reseting IoT Alarm! Re-creating configuration data.");
             SD.remove(CONFIG_FILE);
+            SD.remove(CONFIG_UPLOAD_FILE);
             SD.remove(LOG_FILE);
             SD.remove(LOG_FILE_OLD);
             SD.remove(LOCK_FILE);
@@ -1099,7 +1199,8 @@ void rtosMenu(void* parameters) {
             if (curr_time >= lock_time + g_config.alarm_countdown_s*1000) {
               lock_time = 0;
               g_vars.time_temp = 0;
-              g_vars.alarm_events = 0;
+              g_vars.alarm.alarm_events = 0;
+              g_vars.alarm.alarm_status = ALARM_STATUS_STARTING;
               setState(STATE_ALARM_OK, 0, 0);
               vTaskSuspend(handleTaskMenuRefresh);
               xTaskCreate(rtosAlarm, "alarm", 4096, (void*)false, 5, &handleTaskAlarm);
@@ -1118,7 +1219,8 @@ void rtosMenu(void* parameters) {
             if (curr_time >= lock_time + g_config.alarm_countdown_s*1000) {
               lock_time = 0;
               g_vars.time_temp = 0;
-              g_vars.alarm_events = 0;
+              g_vars.alarm.alarm_events = 0;
+              g_vars.alarm.alarm_status = ALARM_STATUS_STARTING;
               setState(STATE_TEST_OK, 0, 0);
               vTaskSuspend(handleTaskMenuRefresh);
               xTaskCreate(rtosAlarm, "alarm", 4096, (void*)true, 5, &handleTaskAlarm);
@@ -1142,7 +1244,9 @@ void rtosMenu(void* parameters) {
               setState(STATE_ALARM_IDLE, 0, SELECTION_ALARM_IDLE_MAX, "", 0);
               vTaskDelete(handleTaskAlarm);
               vTaskSuspend(handleTaskRfidRefresh);
-              g_vars.alarm_events = 0;
+              g_vars.alarm.alarm_events = 0;
+              g_vars.alarm.alarm_status = ALARM_STATUS_OFF;
+              g_vars.alarm.alarm_intrusion = false;
             } else {
               setState(STATE_MAX, -1, -1, "", g_vars.attempts+1);
               vTaskSuspend(handleTaskRfidRefresh);
@@ -1159,7 +1263,8 @@ void rtosMenu(void* parameters) {
               setState(STATE_TEST_IDLE, 0, SELECTION_TEST_IDLE_MAX, "", 0);
               vTaskDelete(handleTaskAlarm);
               vTaskSuspend(handleTaskRfidRefresh);
-              g_vars.alarm_events = 0;
+              g_vars.alarm.alarm_events = 0;
+              g_vars.alarm.alarm_status = ALARM_STATUS_OFF;
             } else {
               setState(STATE_MAX, -1, -1, "", g_vars.attempts+1);
               vTaskSuspend(handleTaskRfidRefresh);
